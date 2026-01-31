@@ -1,0 +1,6 @@
+/* Clear default Vite styles to prevent interference with our premium UI */
+#root {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}

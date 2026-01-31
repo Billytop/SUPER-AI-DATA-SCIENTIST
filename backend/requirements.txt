@@ -1,0 +1,85 @@
+django<5.0
+djangorestframework
+django-cors-headers
+mysqlclient
+openai
+langchain
+pandas
+numpy
+sqlalchemy
+plotly
+matplotlib
+seaborn
+python-dotenv
+requests
+channels
+channels_redis
+celery
+django-celery-beat
+django-celery-results
+django-admin-interface
+djangorestframework-simplejwt
+bcrypt
+passlib
+pyjwt
+cryptography
+loguru
+sentry-sdk
+psycopg2-binary
+alembic
+pymongo
+redis
+# dask
+# vaex
+# modin
+
+pyarrow
+fastparquet
+openpyxl
+xlrd
+xlwt
+csvkit
+beautifulsoup4
+scrapy
+selenium
+# airflow  <-- Commented out due to complexity/size, install manually if needed
+# tensorflow <-- Commented to save install time, uncomment if GPU ready
+# torch
+# torchvision
+# torchaudio
+scikit-learn
+xgboost
+lightgbm
+catboost
+transformers
+sentence-transformers
+spacy
+nltk
+gensim
+textblob
+flair
+faiss-cpu
+pinecone-client
+tpot
+autokeras
+h2o
+bokeh
+altair
+dash
+networkx
+graphviz
+pygraphviz
+geopandas
+folium
+shapely
+djangorestframework-camel-case
+twilio
+python-telegram-bot
+slack-sdk
+gunicorn
+prometheus_client
+xhtml2pdf
+dask
+torch
+grafana-client
+# vaex-core # Commented out to avoid complex build errors on Windows without C++ tools

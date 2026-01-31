@@ -1,0 +1,27 @@
+
+> frontend@0.0.0 build
+> tsc -b && vite build
+
+src/components/KPIWidget.tsx(1,40): error TS6133: 'TrendingUp' is declared but its value is never read.
+src/components/Sidebar.tsx(1,27): error TS6133: 'MessageSquare' is declared but its value is never read.
+src/pages/Chat.tsx(7,32): error TS6133: 'CheckCircle' is declared but its value is never read.
+src/pages/Chat.tsx(7,45): error TS6133: 'Zap' is declared but its value is never read.
+src/pages/Chat.tsx(8,13): error TS6133: 'Terminal' is declared but its value is never read.
+src/pages/Chat.tsx(8,23): error TS6133: 'Layers' is declared but its value is never read.
+src/pages/Chat.tsx(8,31): error TS6133: 'ChevronRight' is declared but its value is never read.
+src/pages/Chat.tsx(8,45): error TS6133: 'Search' is declared but its value is never read.
+src/pages/Chat.tsx(9,5): error TS6133: 'Cpu' is declared but its value is never read.
+src/pages/Chat.tsx(9,10): error TS6133: 'Lock' is declared but its value is never read.
+src/pages/Chat.tsx(9,16): error TS6133: 'BarChart3' is declared but its value is never read.
+src/pages/Chat.tsx(9,37): error TS6133: 'Filter' is declared but its value is never read.
+src/pages/Chat.tsx(9,45): error TS6133: 'AlertCircle' is declared but its value is never read.
+src/pages/Chat.tsx(9,58): error TS6133: 'Globe' is declared but its value is never read.
+src/pages/Chat.tsx(10,11): error TS6133: 'User' is declared but its value is never read.
+src/pages/Chat.tsx(10,17): error TS6133: 'MoreHorizontal' is declared but its value is never read.
+src/pages/Chat.tsx(10,44): error TS6133: 'Moon' is declared but its value is never read.
+src/pages/Chat.tsx(10,50): error TS6133: 'Sun' is declared but its value is never read.
+src/pages/Login.tsx(5,70): error TS6133: 'Sparkles' is declared but its value is never read.
+src/pages/Register.tsx(5,97): error TS6133: 'ChevronRight' is declared but its value is never read.
+src/pages/Settings.tsx(8,17): error TS6133: 'SettingsIcon' is declared but its value is never read.
+src/pages/Settings.tsx(34,12): error TS6133: 'teamMembers' is declared but its value is never read.
+src/pages/Settings.tsx(44,12): error TS6133: 'isSaving' is declared but its value is never read.

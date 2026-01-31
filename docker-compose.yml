@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_DATABASE: sephlighty_2026
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3307:3306"  # Expose on 3307 to avoid conflict with local MySQL if needed
+    volumes:
+      - db_data:/var/lib/mysql
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+
+  # Uncomment when ready to containerize backend
+  # backend:
+  #   build: ./backend
+  #   command: python manage.py runserver 0.0.0.0:8000
+  #   volumes:
+  #     - ./backend:/app
+  #   ports:
+  #     - "8000:8000"
+  #   depends_on:
+  #     - db
+  #     - redis
+  #   environment:
+  #     - DATABASE_HOST=db
+  #     - REDIS_HOST=redis
+
+  # celery:
+  #   build: ./backend
+  #   command: celery -A config worker -l info
+  #   volumes:
+  #     - ./backend:/app
+  #   depends_on:
+  #     - db
+  #     - redis
+  #   environment:
+  #     - DATABASE_HOST=db
+  #     - REDIS_HOST=redis
+
+  # celery-beat:
+  #   build: ./backend
+  #   command: celery -A config beat -l info
+  #   volumes:
+  #     - ./backend:/app
+  #   depends_on:
+  #     - db
+  #     - redis
+  #   environment:
+  #     - DATABASE_HOST=db
+  #     - REDIS_HOST=redis
+
+volumes:
+  db_data:

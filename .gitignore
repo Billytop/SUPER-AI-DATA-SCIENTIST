@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+venv/
+.env
+
+# Laravel
+vendor/
+node_modules/
+public/storage
+public/hot
+storage/*.key
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+npm-debug.log
+yarn-error.log
+.idea
+.vscode
+.env
+.env.backup
+.env.production
+/backend/data/omnibrain_state.json
+
+# AI Brain Artifacts
+.gemini/
+.agent/
+backend/brain/
+backend/walkthrough.md
+backend/walkthrough_bootstrap.md
+backend/implementation_plan_bootstrap.md
+backend/task.md
+/brain/
+
+# Miscellaneous
+.DS_Store
+Thumbs.db
+*.log
