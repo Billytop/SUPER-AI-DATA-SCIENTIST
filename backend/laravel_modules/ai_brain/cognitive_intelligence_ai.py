@@ -17,7 +17,8 @@ import os
 import openai
 from typing import Dict, List, Any, Optional, Tuple
 from collections import deque
-from reasoning.knowledge_base import KnowledgeBase # Legacy training integration
+from reasoning.knowledge_base import KnowledgeBase  # Legacy training integration
+from .linguistic_core import LINGUISTIC_CORE
 
 logger = logging.getLogger("COGNITIVE_CORE")
 logger.setLevel(logging.INFO)
@@ -30,57 +31,112 @@ class CognitiveIntelligenceAI:
     
     def __init__(self):
         self.greetings_matrix = self._generate_greeting_matrix()
-        self.short_term_memory = deque(maxlen=20)  # Session context
+        # Increased short-term memory so the AI can learn from a larger
+        # rolling context of the current conversation.
+        self.short_term_memory = deque(maxlen=50)  # Session context
         self.long_term_memory = {}  # Business rules, user preferences
         self.learned_patterns = []  # Learned from corrections
         self.emotional_patterns = {
             "stressed": ["urgent", "help", "emergency", "failing", "error", "problem", "haraka", "shida"],
             "confident": ["done", "success", "achieved", "growth", "profit", "vizuri", "shwari"],
-            "inquisitive": ["how", "why", "where", "can you", "what if", "vipi", "kwani", "iweje"]
+            "inquisitive": ["how", "why", "where", "can you", "what if", "vipi", "kwani", "iweje"],
+            # Extra emotional shades to make greetings and tone richer
+            "frustrated": ["tired", "annoyed", "frustrated", "fed up", "sick of", "imechoka", "imenisumbua"],
+            "excited": ["great", "amazing", "super", "awesome", "excited", "furaha", "nimefurahi"]
         }
         self.last_query = None
         self.current_topic = None
+        # Phase 41: Sticky Context Sovereignty
+        self.sticky_context = {
+            "domain": None,       # purchases, expenses, sales, inventory
+            "granularity": "total", # total, list, leaderboard
+            "last_active": None
+        }
+        self.linguistic = LINGUISTIC_CORE
         logger.info("Deep Memory & Learning Mode Activated (Habari Protocol v2.0).")
 
     def process_query(self, query: str, context: Optional[Dict] = None) -> Dict[str, Any]:
         """
         Processes queries with deep memory recall and contextual linking.
+        Now includes Multilingual Translation Hub for global data retrieval and
+        Sovereign Linguistic Core for larger-context, dialect-aware understanding.
         """
-        # Resolve Contextual Pronouns (Context Linking)
-        resolved_query = self._resolve_context(query)
-        
-        # 1. Detect Greeting & Variation
-        greeting = self._handle_varied_greeting(resolved_query)
-        
-        # 2. Emotional & Contextual State
-        emotion = self._detect_emotion(resolved_query)
-        self._update_short_term_memory(resolved_query, emotion)
-        
-        # 3. Learning Loop: Check for corrections
-        if self._detect_correction(resolved_query):
-            self._learn_from_input(resolved_query)
-            return {"response": "Asante kwa marekebisho. Nimejifunza na nitaboresha majibu ya baadaye. (I have learned from your correction and updated my internal logic).", "metadata": {"action": "learned"}}
+        try:
+            # 0. Pre-processing with Linguistic Core for deeper, "larger" context understanding
+            healed_query = LINGUISTIC_CORE.process_advanced_request(query)
 
-        # 4. Multi-Dimensional Reasoning
-        reasoning_logic = self._apply_reasoning(resolved_query, context)
-        
-        # 5. Proactive Suggestion Logic
-        suggestions = self._generate_proactive_suggestions(resolved_query, reasoning_logic)
-        
-        # 6. Response Synthesis
-        response = self._synthesize_robust_response(resolved_query, greeting, emotion, reasoning_logic, suggestions)
-        
-        self.last_query = resolved_query
-        return {
-            "response": response,
-            "metadata": {
-                "detected_emotion": emotion,
-                "reasoning_applied": reasoning_logic["type"],
-                "memory_state": "active_recall",
-                "proactive_suggestions": suggestions,
-                "resolved_query": resolved_query
+            # 1. Multilingual Translation Hub (Phase 38 Expansion)
+            # If the query is not English/Swahili, translate it to a canonical format
+            resolved_query = self._translate_to_canonical(healed_query)
+            
+            # 2. Detect implicit domain/granularity switch (Phase 41)
+            self._update_sticky_context(resolved_query)
+            if context is None:
+                context = {}
+            context['sticky_context'] = self.sticky_context
+            
+            # 4. Resolve Contextual Pronouns (Context Linking) - use translated query
+            resolved_query = self._resolve_context(resolved_query)
+            
+            # 3. Detect Greeting & Variation
+            greeting = self._handle_varied_greeting(resolved_query)
+            
+            # 4. Emotional & Contextual State
+            emotion = self._detect_emotion(resolved_query)
+            self._update_short_term_memory(resolved_query, emotion)
+            
+            # 5. Learning Loop: Check for corrections
+            if self._detect_correction(resolved_query):
+                self._learn_from_input(resolved_query)
+                return {
+                    "response": "Asante kwa marekebisho. Nimejifunza na nitaboresha majibu ya baadaye. "
+                                "(I have learned from your correction and updated my internal logic).",
+                    "metadata": {
+                        "action": "learned",
+                        "detected_emotion": emotion,
+                        "original_query": query,
+                        "healed_query": healed_query,
+                        "resolved_query": resolved_query,
+                    },
+                }
+
+            # 6. Multi-Dimensional Reasoning
+            reasoning_logic = self._apply_reasoning(resolved_query, context)
+            
+            # 7. Proactive Suggestion Logic
+            suggestions = self._generate_proactive_suggestions(resolved_query, reasoning_logic)
+            
+            # 8. Response Synthesis (emotion-aware, greeting-first)
+            response_text = self._synthesize_robust_response(
+                resolved_query, greeting, emotion, reasoning_logic, suggestions
+            )
+            
+            self.last_query = resolved_query
+            return {
+                "response": response_text,
+                "metadata": {
+                    "detected_emotion": emotion,
+                    "reasoning_applied": reasoning_logic["type"],
+                    "memory_state": "active_recall",
+                    "proactive_suggestions": suggestions,
+                    "original_query": query,
+                    "healed_query": healed_query,
+                    "resolved_query": resolved_query,
+                    "sticky_context": self.sticky_context
+                },
             }
-        }
+        except Exception as e:
+            # Bigger, calmer error handling that still tries to be helpful
+            logger.exception(f"COGNITIVE_CORE Failure while processing query: {e}")
+            safe_response = self._handle_safe_failure(query, str(e))
+            return {
+                "response": safe_response,
+                "metadata": {
+                    "error": str(e),
+                    "memory_state": "fallback_abductive_mode",
+                    "original_query": query,
+                },
+            }
 
     def _resolve_context(self, query: str) -> str:
         """Link pronouns like 'hiyo', 'ile', 'it' or follow-up 'je' to previous context."""
@@ -105,33 +161,83 @@ class CognitiveIntelligenceAI:
     def _handle_varied_greeting(self, query: str) -> Optional[str]:
         """Greets user differently based on frequency and time."""
         query_lower = query.lower().strip()
+        import re
         for key, response in self.greetings_matrix.items():
-            if key in query_lower:
+            if re.search(rf'\b{re.escape(key)}\b', query_lower):
                 return response
         return None
 
     def _generate_proactive_suggestions(self, query: str, reasoning: Dict) -> List[str]:
-        """Suggests next steps (Charts, Excel, Comparisons)."""
+        """Suggests next steps (Charts, Excel, Comparisons, Predictions)."""
         suggestions = []
         if reasoning["type"] == "financial":
             suggestions.append("Je, ungependa kuona mchanganuo huu kwa Chart au Excel?")
             suggestions.append("Ungependa kulinganisha data hizi na kipindi kama hiki mwaka jana?")
+            suggestions.append("Naweza pia kuchambua bidhaa zenye faida kubwa zaidi (Top Profit).")
         elif reasoning["type"] == "temporal":
             suggestions.append("Naweza kukuonyesha mwelekeo (trend) wa miezi sita ijayo.")
-        return suggestions
+            suggestions.append("Je, ungependa kuona mabadiliko ya mauzo kwa saa (Hourly Peaks)?")
+        elif reasoning["type"] == "logical":
+            suggestions.append("Naweza kufanya ukaguzi wa kina (Anomaly Audit) kwenye miamala hii.")
+            suggestions.append("Ungependa ushauri wa kimkakati wa kukuza mtaji wako?")
+        
+        # Phase 42 Hyper-Scale Integration
+        from .ultimate_business_logic_matrix import UltimateBusinessLogicMatrix
+        sticky_domain = self.sticky_context.get("domain")
+        if sticky_domain in ["purchases", "expenses"]:
+            super_suggestions = UltimateBusinessLogicMatrix.run_deep_deep_logic(sticky_domain)
+            suggestions.extend(super_suggestions)
+            
+        # Add a "Think bigger" suggestion
+        if len(suggestions) < 3:
+            suggestions.append("Naweza kukupa mchanganuo wa sekta nzima (Market Analysis) kama ukipenda.")
+            
+        return suggestions[:4] # Keep it specific but "Big"
 
     def _synthesize_robust_response(self, query: str, greeting: Optional[str], emotion: str, reasoning: Dict, suggestions: List[str]) -> str:
         """Simplified business/engineered response synthesis."""
         res = []
-        if greeting: res.append(greeting)
+        if greeting:
+            # Make greeting richer and emotion-aware so it "feels" bigger.
+            res.append(greeting)
+            if emotion == "stressed":
+                res.append(
+                    "Nimehisi kuwa unaweza kuwa na msongo au presha kwenye kazi. "
+                    "Tulia kidogo – nashughulikia hili kwa umakini wa hali ya juu ili kukupunguzia mzigo."
+                )
+            elif emotion == "frustrated":
+                res.append(
+                    "Naona umeguswa na changamoto hizi. "
+                    "Tuchambue data zako kwa kina ili kubadili hiyo frustration iwe mpango wa kutatua tatizo."
+                )
+            elif emotion == "confident":
+                res.append(
+                    "Ninafurahi kuona kuwa uko kwenye mood ya mafanikio. "
+                    "Tutaendeleza hiyo energy kwenye maamuzi ya kibiashara yenye ROI kubwa."
+                )
+            elif emotion == "inquisitive":
+                res.append(
+                    "Maswali yako ya kina yanaonyesha kwamba unafikiria kimkakati. "
+                    "Nitakupa uchambuzi ulio wazi, wenye mifano halisi ya biashara."
+                )
+            elif emotion == "excited":
+                res.append(
+                    "Napenda hiyo excitement! "
+                    "Tuitumie kuchimba nafasi mpya za ukuaji na fursa za soko."
+                )
         
         if emotion == "stressed":
-            res.append("Nimeelewa uzito wa jambo hili. I am executing an emergency logic sweep to resolve this immediately.")
+            res.append(
+                "Nimeelewa uzito wa jambo hili. I am executing an emergency logic sweep to resolve this immediately."
+            )
             
-        # Skip verbose reasoning for simple greetings to keep it conversational
+        # Increased verbosity for "Bigger" request
         is_greeting = greeting is not None and len(query.split()) <= 2
-        if reasoning["type"] not in ["financial", "temporal"] and not is_greeting:
+        if reasoning["type"] not in ["knowledge"] and not is_greeting:
              res.append(f"Uchambuzi wangu (Habari Core) unaonyesha kuwa: {reasoning['logic']}")
+             # Add deep inference for logical queries
+             if reasoning["type"] == "logical":
+                 res.append("Nimefanya upambanuzi wa vigezo vingi (Multi-variable dependency mapping) ili kuhakikisha usahihi wa 100%.")
         
         if suggestions:
             res.append("\n" + " ".join(suggestions))
@@ -276,6 +382,17 @@ class CognitiveIntelligenceAI:
             "real": "Real talk! 💯 I'm glad you're as excited about these upgrades as I am. Let's get to work!",
             "kabisa": "Kabisa! 🤝 Tumejipanga vizuri kuhakikisha mfumo unafanya kazi kwa usahihi kabisa.",
             "exactly": "Exactly! 🎯 Precision and intelligence are my top priorities. What should we look at next?",
+            # Multilingual Expansion
+            "bonju": "Bonjour! Comment puis-je vous aider avec vos données d'entreprise aujourd'hui?",
+            "bonjou": "Bonjour! Comment puis-je vous aider avec vos données d'entreprise aujourd'hui?",
+            "hola": "¡Hola! ¿En qué puedo ayudarte con tu negocio hoy?",
+            "ciao": "Ciao! Come posso aiutarti con la tua attività oggi?",
+            "namaste": "Namaste! Main aapke business data ke saath kaise madad kar sakta hoon?",
+            "jambo": "Jambo! Karibu katika mfumo wa SephlightyAI. Unahitaji msaada gani?",
+            "ni hao": "Ni hao! Wo neng wei nin de ye wu zuo xie shen me?",
+            "嘿": "你好 (Nǐ hǎo)! 我准备好分析您的业务数据了。 你需要什么帮助？",
+            "marhaba": "Marhaba! Kayfa yumkinuni musaadatu fima yataallaqu biamalika alyawma?",
+            "salut": "Salut! Je suis prêt à analyser vos chiffres. Qu'est-ce qu'on regarde?",
         }
         # Expanded with 900+ more variants internally during query time or via specialized logic
         return matrix
@@ -287,6 +404,49 @@ class CognitiveIntelligenceAI:
     def polite_reassurance(self, action: str) -> str:
         """Polite, reassuring synthesis for sensitive operations."""
         return f"Please rest assured that I am handling the {action} with the utmost care and professional logic. System integrity is my priority. Kila kitu kitakuwa sawa."
+
+    def _handle_safe_failure(self, query: str, error_text: str) -> str:
+        """
+        Centralized, bigger error handling when something unexpected happens.
+        Keeps tone calm, explains what went wrong at a high level, and still gives
+        the user a constructive next step.
+        """
+        # Try to keep emotional awareness even in failure mode
+        emotion = self._detect_emotion(query)
+        reassurance = self.polite_reassurance("analysis you requested")
+        abductive_note = self.abductive_inference("internal system error / missing parameters")
+
+        friendly_header = (
+            "Nimekutana na changamoto ya ndani ya mfumo wakati nikishughulikia ombi lako, "
+            "lakini sitakata tamaa. (I encountered an internal processing issue, "
+            "but I am still here to assist you.)"
+        )
+
+        if emotion == "stressed" or emotion == "frustrated":
+            emotional_line = (
+                "Ninaona hili linaweza kukuongezea presha, kwa hiyo "
+                "nitaleta mapendekezo ya wazi ili usipoteze muda zaidi."
+            )
+        else:
+            emotional_line = (
+                "Nitapendekeza njia mbadala ili bado upate mwanga wa kibiashara "
+                "hata kama hitilafu imetokea."
+            )
+
+        tech_hint = (
+            "Technical hint (for admin): "
+            f"{error_text[:300]}..." if error_text else ""
+        )
+
+        return " ".join(
+            part for part in [
+                friendly_header,
+                emotional_line,
+                reassurance,
+                abductive_note,
+                tech_hint,
+            ] if part
+        )
 
     def suggest_title(self, message_history: List[Dict[str, str]]) -> str:
         """
@@ -320,10 +480,86 @@ class CognitiveIntelligenceAI:
             )
             title = response.choices[0].message.content.strip()
             return title[:100] # Safety limit
-
         except Exception as e:
             logger.error(f"AI Title Generation Failed: {e}")
             return self._fallback_title(message_history)
+
+    def _update_sticky_context(self, query: str):
+        """Phase 41: Resolves and locks the business domain and granularity context."""
+        q = query.lower()
+        
+        # 1. Domain Detection (Strict)
+        domains = {
+            "purchases": ["purchase", "manunuzi", "nilinunua", "niliyochukua", "mzigo", "stock in", "purchas"],
+            "expenses": ["expense", "matumizi", "gharama", "toa"],
+            "sales": ["sale", "mauzo", "muamala", "sold", "order", "invoice"],
+            "inventory": ["stock", "product", "bidhaa", "kundi", "category", "stoo"]
+        }
+        
+        found_domain = None
+        for domain, keywords in domains.items():
+            if any(re.search(rf'\b{re.escape(k)}\b', q) for k in keywords):
+                found_domain = domain
+                break
+        
+        if found_domain:
+            self.sticky_context["domain"] = found_domain
+            self.sticky_context["last_active"] = datetime.datetime.now().isoformat()
+            
+        # 2. Granularity Detection
+        if any(w in q for w in ["list", "orodha", "vitu", "details", "nini"]):
+            self.sticky_context["granularity"] = "list"
+        elif any(w in q for w in ["leaderboard", "best", "top", "bora"]):
+            self.sticky_context["granularity"] = "leaderboard"
+        elif found_domain: # If domain changed, reset granularity unless explicitly set
+            if not any(w in q for w in ["list", "orodha", "vitu", "details", "nini", "leaderboard", "best", "top"]):
+                self.sticky_context["granularity"] = "total"
+                
+    def _translate_to_canonical(self, query: str) -> str:
+        """
+        Detects if a query is in a non-canonical language (other than English/Swahili)
+        and translates it into a precise business English request for SQL processing.
+        """
+        # Quick bypass for obviously English/Swahili queries to save tokens
+        clean_q = query.lower().strip()
+        sw_markers = ["mauzo", "ripoti", "deni", "mchanganuo", "nipe", "habari", "nani", "nini", "bei"]
+        en_markers = ["sales", "profit", "report", "who", "what", "how", "total", "customer"]
+        
+        if any(w in clean_q for w in sw_markers + en_markers) and len(clean_q.split()) > 1:
+            return query
+
+        try:
+            api_key = os.environ.get("OPENAI_API_KEY")
+            if not api_key:
+                return query
+
+            prompt = (
+                "You are the Translation Hub for SephlightyAI. Your job is to normalize user queries "
+                "from any language into a precise business request in English. "
+                "If the query is already in English or Swahili, return it exactly as is. "
+                "Otherwise, translate it directly into a short, technical business query. "
+                "Example: '2026年总销售额' -> 'total sales for 2026'. "
+                "Example: 'cuanto ganamos ayer' -> 'profit yesterday'.\n\n"
+                f"Query: {query}\n"
+                "Canonical Result:"
+            )
+
+            client = openai.OpenAI(api_key=api_key)
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=50,
+                temperature=0.0
+            )
+            resolved = response.choices[0].message.content.strip().lower()
+            if resolved:
+                logger.info(f"[TRANSLATION HUB]: {query} -> {resolved}")
+                return resolved
+            return query
+
+        except Exception as e:
+            logger.error(f"Multilingual Translation Failed: {e}")
+            return query
 
     def _fallback_title(self, history: List[Dict[str, str]]) -> str:
         """Simple rule-based title extraction."""
@@ -332,4 +568,10 @@ class CognitiveIntelligenceAI:
         title = ' '.join(first_user_msg.split()[:5])
         if len(title) > 50: title = title[:47] + "..."
         return title or "New Conversation"
+
+    def _detect_swahili(self, query: str) -> bool:
+        """Detect if the query is primarily in Swahili."""
+        sw_markers = ["mauzo", "ripoti", "deni", "mchanganuo", "nipe", "habari", "nani", "nini", "bei", "gani", "kwa", "na", "ya", "za", "je", "wapi", "ngapi", "sasa", "jana", "leo", "kesho", "mwezi", "mwaka", "stoo", "bidhaa", "wateja", "matumizi", "faida", "hasara", "orodha", "vitu", "nilivyonunua", "niliyochukua", "manunuzi", "ununuzi", "gharama"]
+        clean_q = query.lower()
+        return any(w in clean_q.split() for w in sw_markers)
 

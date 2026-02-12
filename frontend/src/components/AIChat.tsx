@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, X, Bot, User } from 'lucide-react';
+import { Send, Sparkles, X, Bot, User, FileDown, ExternalLink } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../lib/api';
@@ -104,10 +104,35 @@ export function AIChat() {
                                                 : "bg-white/5 text-gray-200 rounded-tl-sm border border-white/10"
                                         )}>
                                             <div className="prose prose-invert prose-p:my-1 prose-headings:my-2 prose-strong:text-blue-300 max-w-none">
-                                                {msg.content.split('\n').map((line, i) => (
+                                                {msg.content.split('\n').filter(line => !line.includes('[DOWNLOAD_ACTION]')).map((line, i) => (
                                                     <p key={i}>{line}</p>
                                                 ))}
                                             </div>
+
+                                            {/* Download Button Action */}
+                                            {msg.role === 'ai' && msg.content.includes('[DOWNLOAD_ACTION]') && (() => {
+                                                const url = msg.content.split('[DOWNLOAD_ACTION]: ')[1]?.split('\n')[0].trim();
+                                                const isPdf = url?.toLowerCase().endsWith('.pdf');
+                                                const fileType = isPdf ? 'PDF DOCUMENT' : 'EXCEL REPORT';
+
+                                                return (
+                                                    <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl flex flex-col gap-3">
+                                                        <div className="flex items-center gap-2 text-blue-300 text-[12px] font-medium">
+                                                            <FileDown className="w-4 h-4" />
+                                                            <span>{isPdf ? 'PDF Document' : 'Excel Report'} Ready for Download</span>
+                                                        </div>
+                                                        <a
+                                                            href={url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="flex items-center justify-center gap-2 py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all font-bold text-[13px] shadow-lg shadow-blue-500/20 active:scale-[0.98]"
+                                                        >
+                                                            DOWNLOAD {fileType}
+                                                            <ExternalLink className="w-3.5 h-3.5" />
+                                                        </a>
+                                                    </div>
+                                                );
+                                            })()}
 
                                             {msg.visual === 'chart' && msg.data && (
                                                 <div className="mt-4 h-40 w-full bg-black/40 rounded-xl border border-white/5 p-2">
@@ -159,19 +184,30 @@ export function AIChat() {
 
                         {/* Input */}
                         <form onSubmit={handleSubmit} className="p-4 border-t border-white/10 bg-black/20 backdrop-blur-md">
-                            <div className="relative group">
-                                <input
-                                    type="text"
+                            <div className="relative group bg-black/40 border border-white/10 rounded-xl transition-all shadow-inner focus-within:ring-1 focus-within:ring-blue-500/50 focus-within:border-blue-500/50">
+                                <textarea
                                     value={query}
-                                    onChange={(e) => setQuery(e.target.value)}
-                                    placeholder="Type your question..."
-                                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-4 pr-12 py-3.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all shadow-inner"
+                                    onChange={(e) => {
+                                        setQuery(e.target.value);
+                                        e.target.style.height = 'auto';
+                                        e.target.style.height = e.target.scrollHeight + 'px';
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            handleSubmit(e);
+                                        }
+                                    }}
+                                    placeholder="Type your question or paste data..."
+                                    className="w-full bg-transparent border-none rounded-xl pl-4 pr-12 py-3.5 text-sm text-white placeholder-gray-500 focus:ring-0 resize-none overflow-hidden min-h-[50px] max-h-[200px]"
                                     disabled={isLoading}
+                                    rows={1}
+                                    style={{ height: '52px' }}
                                 />
                                 <button
                                     type="submit"
                                     disabled={isLoading || !query.trim()}
-                                    className="absolute right-2 top-2 p-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg shadow-blue-500/20"
+                                    className="absolute right-2 bottom-2 p-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg shadow-blue-500/20"
                                 >
                                     <Send className="w-4 h-4" />
                                 </button>

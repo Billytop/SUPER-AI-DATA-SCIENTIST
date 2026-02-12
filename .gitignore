@@ -55,3 +55,6 @@ backend/task.md
 .DS_Store
 Thumbs.db
 *.log
+
+# Large AI Data
+backend/reasoning/knowledge_base_*.json

@@ -5,7 +5,6 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
     User,
-    Settings as SettingsIcon,
     Users,
     Bot,
     Database,
@@ -31,7 +30,7 @@ export default function Settings() {
         system_prompt: ''
     });
 
-    const [teamMembers, setTeamMembers] = useState<any[]>([]);
+    const [, setTeamMembers] = useState<any[]>([]);
     const [dbConfig, setDbConfig] = useState({
         db_name: '',
         db_host: '127.0.0.1',
@@ -41,7 +40,6 @@ export default function Settings() {
     });
 
     const [message, setMessage] = useState('');
-    const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
         if (user?.profile?.preferences) {
@@ -68,7 +66,6 @@ export default function Settings() {
     };
 
     const handleSavePreferences = async () => {
-        setIsSaving(true);
         try {
             await authAPI.updatePreferences({ preferences });
             setMessage('Preferences synchronized.');
@@ -76,8 +73,6 @@ export default function Settings() {
             setTimeout(() => setMessage(''), 3000);
         } catch (error) {
             setMessage('Synchronization failed.');
-        } finally {
-            setIsSaving(false);
         }
     };
 

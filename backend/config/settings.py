@@ -52,8 +52,8 @@ INSTALLED_APPS = [
     'channels',
     'django_celery_beat',
     'django_celery_results',
-    'admin_interface',
-    'colorfield',
+    # 'admin_interface',
+    # 'colorfield',
     # Local
     'analytics',
     'core',
@@ -113,28 +113,13 @@ ASGI_APPLICATION = 'config.asgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'sephlighty_brain',
-        'USER': os.environ.get('DB_USER', 'root'),
-        'PASSWORD': os.environ.get('DB_PASSWORD', ''),
-        'HOST': os.environ.get('DB_HOST', '127.0.0.1'),
-        'PORT': os.environ.get('DB_PORT', '3306'),
-        'OPTIONS': {
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES', NAMES 'utf8mb4' COLLATE 'utf8mb4_unicode_ci'",
-            'charset': 'utf8mb4',
-        },
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     },
+    # Redirecting ERP queries to SQLite to support AI modules while bypassing MariaDB version constraints
     'erp': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': '2026v4',
-        'USER': os.environ.get('DB_USER', 'root'),
-        'PASSWORD': os.environ.get('DB_PASSWORD', ''),
-        'HOST': os.environ.get('DB_HOST', '127.0.0.1'),
-        'PORT': os.environ.get('DB_PORT', '3306'),
-        'OPTIONS': {
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES', NAMES 'utf8mb4' COLLATE 'utf8mb4_unicode_ci'",
-            'charset': 'utf8mb4',
-        },
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
 
@@ -175,6 +160,10 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / "static_root"
+
+# Media files (Uploads, Generated Exports)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'exports'
 
 # REST Framework
 REST_FRAMEWORK = {

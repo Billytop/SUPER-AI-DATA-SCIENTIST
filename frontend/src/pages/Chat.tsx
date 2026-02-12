@@ -4,7 +4,7 @@ import { useAuthStore } from '../lib/authStore';
 import apiClient from '../lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Layout, Sparkles, Brain, Clock, Activity, Send, X, LogOut, Settings, MessageSquare, Database
+    Layout, Sparkles, Brain, Clock, Activity, Send, X, LogOut, Settings, MessageSquare, Database, Trash2, FileDown, ExternalLink
 } from 'lucide-react';
 import {
     ResponsiveContainer, AreaChart, Area, BarChart, Bar,
@@ -78,7 +78,15 @@ export default function Chat() {
     const fetchConversations = async () => {
         try {
             const response = await apiClient.get('/conversations/');
-            const data = Array.isArray(response.data) ? response.data : [];
+            let data = [];
+
+            // Handle pagination vs flat list
+            if (Array.isArray(response.data)) {
+                data = response.data;
+            } else if (response.data?.results && Array.isArray(response.data.results)) {
+                data = response.data.results;
+            }
+
             setConversations(data);
 
             // Auto-load last if none selected
@@ -116,6 +124,27 @@ export default function Chat() {
     const startNewSession = () => {
         setSelectedConvId(null);
         setMessages([]);
+    };
+
+    const deleteConversation = async (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!confirm('Are you sure you want to delete this conversation?')) return;
+
+        try {
+            await apiClient.delete(`/conversations/${id}/`);
+            setConversations(prev => prev.filter(c => c.id !== id));
+
+            if (selectedConvId === id) {
+                startNewSession();
+                // Optionally load the next available conversation
+                const remaining = conversations.filter(c => c.id !== id);
+                if (remaining.length > 0) {
+                    loadConversation(remaining[0].id);
+                }
+            }
+        } catch (error) {
+            console.error('Failed to delete conversation:', error);
+        }
     };
 
     const sendMessage = async () => {
@@ -273,17 +302,29 @@ export default function Chat() {
                             </div>
                         ) : (
                             conversations.map((conv) => (
-                                <button
+                                <div
                                     key={conv.id}
-                                    onClick={() => loadConversation(conv.id)}
-                                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all text-left truncate ${selectedConvId === conv.id
+                                    className={`group w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all text-left truncate relative ${selectedConvId === conv.id
                                         ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20'
                                         : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
                                         }`}
                                 >
-                                    <MessageSquare size={14} className="shrink-0" />
-                                    <span className="truncate">{conv.title}</span>
-                                </button>
+                                    <button
+                                        onClick={() => loadConversation(conv.id)}
+                                        className="flex-1 flex items-center gap-3 min-w-0"
+                                    >
+                                        <MessageSquare size={14} className="shrink-0" />
+                                        <span className="truncate">{conv.title}</span>
+                                    </button>
+
+                                    <button
+                                        onClick={(e) => deleteConversation(conv.id, e)}
+                                        className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 hover:text-red-400 rounded transition-all"
+                                        title="Delete chat"
+                                    >
+                                        <Trash2 size={12} />
+                                    </button>
+                                </div>
                             ))
                         )}
                     </div>
@@ -375,8 +416,33 @@ export default function Chat() {
                                     )}
 
                                     <div className="prose prose-invert prose-sm max-w-none leading-relaxed whitespace-pre-wrap">
-                                        {msg.content}
+                                        {msg.content.split('\n').filter(line => !line.includes('[DOWNLOAD_ACTION]')).join('\n')}
                                     </div>
+
+                                    {/* Download Button Action */}
+                                    {msg.role === 'assistant' && msg.content.includes('[DOWNLOAD_ACTION]') && (() => {
+                                        const url = msg.content.split('[DOWNLOAD_ACTION]: ')[1]?.split('\n')[0].trim();
+                                        const isPdf = url?.toLowerCase().endsWith('.pdf');
+                                        const fileType = isPdf ? 'PDF DOCUMENT' : 'EXCEL REPORT';
+
+                                        return (
+                                            <div className="mt-4 p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex flex-col gap-3">
+                                                <div className="flex items-center gap-2 text-indigo-300 text-[12px] font-medium">
+                                                    <FileDown className="w-4 h-4" />
+                                                    <span>{isPdf ? 'PDF Document' : 'Excel Report'} Ready for Download</span>
+                                                </div>
+                                                <a
+                                                    href={url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="flex items-center justify-center gap-2 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-all font-bold text-[13px] shadow-lg shadow-indigo-500/20 active:scale-[0.98] no-underline"
+                                                >
+                                                    DOWNLOAD {fileType}
+                                                    <ExternalLink className="w-3.5 h-3.5" />
+                                                </a>
+                                            </div>
+                                        );
+                                    })()}
 
                                     {msg.data && msg.data.length > 0 && (
                                         <div className="mt-4 pt-4 border-t border-white/5">

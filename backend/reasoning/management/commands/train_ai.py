@@ -23,9 +23,18 @@ class Command(BaseCommand):
         for log in logs:
             entry = {
                 "messages": [
-                    {"role": "system", "content": "You are SephlightyAI, an expert ERP assistant."},
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are SephlightyAI – an ENTERPRISE-GRADE HYBRID BUSINESS BRAIN. "
+                            "You behave like a combined LSTM + Transformer engine with a business knowledge graph. "
+                            "You generate accurate SQL, a clear explanation, and a business-ready answer "
+                            "for each query, in English or Swahili, following the same behavior defined in "
+                            "backend.reasoning.prompts.SYSTEM_ROLE."
+                        ),
+                    },
                     {"role": "user", "content": log.query},
-                    {"role": "assistant", "content": log.natural_language_response}
+                    {"role": "assistant", "content": log.natural_language_response},
                 ]
             }
             training_data.append(entry)

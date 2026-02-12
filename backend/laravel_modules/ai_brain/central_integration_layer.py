@@ -11,12 +11,13 @@ import logging
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 import json
-from .cognitive_intelligence_ai import CognitiveIntelligenceAI
+from laravel_modules.ai_brain.cognitive_intelligence_ai import CognitiveIntelligenceAI
 from laravel_modules.ai_brain.omnibrain_saas_engine import OmnibrainSaaSEngine
 from laravel_modules.ai_brain.evolution_engine import EvolutionEngine
 from laravel_modules.ai_brain.singularity_logic_hub import SingularityLogicHub
 from laravel_modules.ai_brain.absolute_logic_vault import AbsoluteLogicVault
 from laravel_modules.module_assistants.report_engine_ai import ReportEngineAI
+from laravel_modules.ai_brain.high_density.super_agent_planner import SuperAgentPlanner
 
 logger = logging.getLogger("CENTRAL_INTEGRATION")
 logger.setLevel(logging.DEBUG)
@@ -158,9 +159,19 @@ class CentralAI:
         self.singularity = SingularityLogicHub()
         self.absolute_vault = AbsoluteLogicVault()
         self.reports = ReportEngineAI()
+        self.planner = SuperAgentPlanner() # 🚀 The Super-AI Brain
         self.query_count = 0
         self.evolution_interval = 10
         self.reasoning_history = []
+
+        # Phase 44: SephlightyBrain as Knowledge-Base Fallback Brain
+        try:
+            from reasoning.agents import SephlightyBrain
+            self.sephlighty = SephlightyBrain()
+            logger.info("PHASE 44: SephlightyBrain connected as Knowledge Brain in CentralAI")
+        except Exception as e:
+            logger.warning(f"Phase 44 SephlightyBrain Bridge: {e}")
+            self.sephlighty = None
         logger.info("CENTRAL AI HUB: Supreme MoE + Evolution Engine Online.")
         
     def initialize(self):
@@ -191,7 +202,7 @@ class CentralAI:
                     
                     # Find last assistant intent
                     last_ai_msg = Message.objects.filter(conversation_id=conv_id, role='assistant', intent__isnull=False).exclude(intent='UNKNOWN').order_by('-created_at').first()
-                    if last_ai_msg:
+                    if last_ai_msg and last_ai_msg.intent != "ERROR":
                         self.saas.last_intent = last_ai_msg.intent
                         logger.info(f"Context Recovered: Intent={last_ai_msg.intent}, LastQuery={last_user_msg.content if last_user_msg else 'None'}")
                 except Exception as e:
@@ -241,7 +252,12 @@ class CentralAI:
             # 6. Cognitive Synthesis (Identify Context First)
             cog_result = {"response": "", "metadata": {}}
             try:
-                cog_result = self.cognitive.process_query(natural_language, context)
+                raw_result = self.cognitive.process_query(natural_language, context)
+                if isinstance(raw_result, dict):
+                    cog_result = raw_result
+                else:
+                    # Fallback for legacy string return
+                    cog_result = {"response": str(raw_result), "metadata": {}}
             except Exception as e:
                 logger.error(f"Cognitive Resolve Failure: {e}")
 
@@ -249,7 +265,9 @@ class CentralAI:
             try:
                 # Use the contextual resolved_query (from cog) to ensure "je" follow-ups work for data
                 resolved_query = cog_result.get("metadata", {}).get("resolved_query", natural_language)
-                saas_result = self.saas.process_query(resolved_query, conn_id)
+                # Phase 41: Bridge sticky context to SaaS
+                sticky_context = cog_result.get("metadata", {}).get("sticky_context", {})
+                saas_result = self.saas.process_query(resolved_query, conn_id, context={'sticky_context': sticky_context})
             except Exception as e:
                 logger.critical(f"SaaS Core Engine Failure: {e}")
                 import traceback
@@ -262,6 +280,15 @@ class CentralAI:
                     "data": []
                 }
             
+            # Phase 42 Expansion: Recursive Strategic Heuristics (Super-AI Deep Reasoning)
+            try:
+                # The Planner Agent coordinates EBH, SIE, and MKG
+                deep_reasoning = self.planner.process_master_query(resolved_query, context)
+                saas_result["deep_analysis"] = deep_reasoning
+                logger.info("PHASE 42: Deep Strategic Heuristics Applied to Result")
+            except Exception as e:
+                logger.error(f"Super-AI Planner Failure (Non-critical): {e}")
+            
             # 8. Capture Reasoning for History
             self.reasoning_history.append({
                 "context": context,
@@ -270,33 +297,68 @@ class CentralAI:
                 "success": True 
             })
 
-            # 9. Final Enrichment & Output Synthesis (Direct Answer Priority)
-            evolution_insight = f"\n\n[EVOLUTION INFO]: {self.evolution.generate_evolution_log()}" if self.query_count > 5 else ""
-            
-            # Check for list/dict vs string response
-            orig_res = saas_result.get("response", "")
-            if not isinstance(orig_res, str):
-                orig_res = str(orig_res)
-            
-            # If SaaS found direct data (SQL-Bridge or specific resolution) or Cognitive found Knowledge, skip generic filler
-            is_data = saas_result.get("metadata", {}).get("reasoning_mode") == "SQL-Bridge" or "TZS" in orig_res or "[CHART_DATA]" in orig_res
-            is_knowledge = cog_result.get("metadata", {}).get("reasoning_applied") == "knowledge"
-            cog_res = cog_result.get('response', '')
+            # Phase 43: AI Memory & Self-Learning Conversation Tracking
+            try:
+                if self.saas.ai_memory:
+                    self.saas.ai_memory.short_term.push_context({
+                        "query": natural_language,
+                        "intent": saas_result.get("intent", ""),
+                        "confidence": saas_result.get("metadata", {}).get("confidence", 0),
+                        "conversation_id": conv_id,
+                    })
+                if self.saas.self_learner:
+                    import time as _t43
+                    self.saas.self_learner.on_response(
+                        domain=saas_result.get("intent", "general").lower().replace(" ", "_"),
+                        query=natural_language,
+                        answer=str(saas_result.get("response", ""))[:500],
+                        confidence=saas_result.get("metadata", {}).get("confidence", 0.5),
+                        response_time=0.0,
+                    )
+            except Exception:
+                pass
 
-            if is_data:
-                # Direct Amount First, then recommendations
-                recommendations = f"\n\n💡 **AI Recommendations:**\n{cog_res}" if cog_res and not is_knowledge else ""
-                saas_result["answer"] = f"{orig_res}{recommendations}{evolution_insight}"
-            elif is_knowledge:
-                saas_result["answer"] = f"{cog_res}{evolution_insight}"
-            else:
-                # If SaaS just gave a low-confidence warning and Cog gave a greeting/response, suppress the warning
-                is_low_conf = saas_result.get("metadata", {}).get("confidence", 1.0) < 0.7
-                if is_low_conf and cog_res:
-                    saas_result["answer"] = f"{cog_res}{evolution_insight}"
-                else:
-                    saas_result["answer"] = f"{cog_res}\n\n{orig_res}{evolution_insight}"
-            
+            # Phase 43: Embedding Engine — Index conversation for RAG retrieval
+            try:
+                if self.saas.embedding_engine:
+                    self.saas.embedding_engine.index_text(
+                        text=f"{natural_language} | {str(saas_result.get('response', ''))[:200]}",
+                        domain="conversations",
+                        metadata={"intent": saas_result.get("intent", ""), "conversation_id": conv_id}
+                    )
+            except Exception:
+                pass
+
+            # Phase 43: Agent Pipeline Narration for complex/multi-domain queries
+            try:
+                if self.saas.agent_pipeline:
+                    plan = self.saas.agent_pipeline.process_plan_only(natural_language)
+                    plan_info = plan.get("plan", {})
+                    if plan_info.get("complexity") in ("complex", "multi-domain"):
+                        narrator_result = self.saas.agent_pipeline.narrate(natural_language, saas_result.get("response", ""))
+                        if narrator_result:
+                            saas_result["agent_narration"] = narrator_result
+                            logger.info("PHASE 43: Agent Pipeline narration applied")
+            except Exception:
+                pass
+
+            # Phase 44: SephlightyBrain Knowledge-Base Fallback
+            # If SaaS returned low confidence, enrich via SephlightyBrain's 300k+ KB
+            if self.sephlighty:
+                try:
+                    saas_confidence = saas_result.get("metadata", {}).get("confidence", 1.0)
+                    if saas_confidence < 0.7:
+                        kb_result = self.sephlighty.run(natural_language)
+                        if kb_result.get("confidence", 0) > 70:
+                            saas_result["kb_enrichment"] = kb_result.get("answer", "")
+                            logger.info("PHASE 44: SephlightyBrain Knowledge Enrichment applied")
+                except Exception:
+                    pass
+
+            # Phase 45: Super Smart Synthesis
+            # Merges SephlightyBrain reasoning with SaaS Data for a single unified answer.
+            saas_result["answer"] = self._synthesize_super_smart(saas_result, cog_result)
+
             return saas_result
 
         except Exception as e:
@@ -309,6 +371,50 @@ class CentralAI:
                 "intent": "ERROR",
                 "data": []
             }
+
+    def _synthesize_super_smart(self, result: Dict, cog_result: Dict) -> str:
+        """
+        Unified output synthesis for Phase 45.
+        Combines data, narration, and knowledge into a single cohesive story.
+        """
+        data_res = result.get("response", "")
+        if not isinstance(data_res, str): data_res = str(data_res)
+        
+        narration = result.get("agent_narration", "")
+        enrichment = result.get("kb_enrichment", "")
+        insight = result.get("deep_analysis", {}).get("response", "")
+        cog_res = cog_result.get("response", "")
+        
+        # 1. Start with the data-driven core
+        answer = f"{data_res}"
+        
+        # 2. Add Narration as the "Agent Voice"
+        if narration:
+            answer += f"\n\n🤖 **AI Agent Analysis:**\n{narration}"
+        
+        # 3. Add Strategic Insight
+        if insight:
+            answer += f"\n\n🚨 **STRATEGIC AI INSIGHT:**\n{insight}"
+            
+        # 4. Smart Knowledge Integration (Avoid Redundancy)
+        if enrichment:
+            # Check for contradiction between data and enrichment
+            if "decreas" in enrichment.lower() and "increas" in data_res.lower():
+                answer += f"\n\n⚠️ **Logic Conflict Detected:** Cross-verifying internal reports. Note: Recent trends may vary by specific category filtering."
+            
+            # Append as enriched context if not redundant
+            if len(enrichment) > 20: 
+                answer += f"\n\n📚 **Knowledge Enrichment:**\n{enrichment}"
+        
+        # 5. Add Cognitive Tips if not already covered
+        if cog_res and cog_result.get("metadata", {}).get("reasoning_applied") != "knowledge":
+            answer += f"\n\n💡 **AI Pro-Tip:**\n{cog_res}"
+
+        # 6. Final Clean-up: Ensure TZS formatting is consistent
+        answer = answer.replace("tzs", "TZS").replace("Tzs", "TZS")
+        
+        return answer
+
 
     def evolve(self):
         """Trigger recursive logic distillation and optimization."""

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../lib/authStore';
 import { motion } from 'framer-motion';
-import { Brain, Mail, Lock, Building, ArrowRight, Shield, Globe, Cpu, Command, Orbit, Database, ChevronRight, Activity } from 'lucide-react';
+import { Brain, Mail, Lock, Building, ArrowRight, Shield, Globe, Cpu, Command, Orbit, Database, Activity } from 'lucide-react';
 
 export default function Register() {
     const [formData, setFormData] = useState({
