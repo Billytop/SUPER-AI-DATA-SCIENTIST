@@ -1,4 +1,9 @@
-import MySQLdb
+try:
+    import MySQLdb
+except ImportError:
+    import pymysql
+    pymysql.install_as_MySQLdb()
+    import MySQLdb
 import os
 from dotenv import load_dotenv
 

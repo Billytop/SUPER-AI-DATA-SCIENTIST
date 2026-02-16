@@ -135,6 +135,17 @@ except ImportError:
 logger = logging.getLogger("OMNIBRAIN_SAAS")
 logger.setLevel(logging.INFO)
 
+# Phase 2 AI Upgrade Configuration
+try:
+    from config.llm_config import OLLAMA_BASE_URL, DEFAULT_MODEL, SYSTEM_PROMPT, LLM_TIMEOUT
+    HAS_LLM_CONFIG = True
+except ImportError:
+    HAS_LLM_CONFIG = False
+    OLLAMA_BASE_URL = "http://localhost:11434"
+    DEFAULT_MODEL = "llama3"
+    SYSTEM_PROMPT = "You are OmniBrain."
+    LLM_TIMEOUT = 30
+
 class OmnibrainSaaSEngine:
     """
     Autonomous Intelligence Layer for Multi-Tenant Enterprise Databases.
@@ -727,7 +738,9 @@ class OmnibrainSaaSEngine:
                     (f"%{cand.replace(' ', '%')}%", f"%{cand}%")
                 )
                 if res and not any(e['id'] == res[0]['id'] for e in entities):
-                    entities.append(res[0])
+                    p_entity = res[0]
+                    if 'sku' not in p_entity or not p_entity['sku']: p_entity['sku'] = "N/A"
+                    entities.append(p_entity)
             
             if not found_for_cand and domain == "categories":
                 res = self._execute_erp_query(
@@ -785,7 +798,20 @@ class OmnibrainSaaSEngine:
 
             # Strategy 4b: Deep Fuzzy Logic (Python-side) - MOVED UP PRIORITY
             # Check this BEFORE loose "OR" search to avoid matching just "Dodoma" in "Paschal White Dodoma"
-            if not found_for_cand and len(cand) > 3:
+            if not found_for_cand and domain == "products" and len(cand) > 3:
+                match = self._fuzzy_find_product(cand)
+                if match:
+                    if not any(e['id'] == match['variation_id'] for e in entities):
+                         # Normalize keys for product entity
+                         p_entity = {
+                             "id": match['variation_id'],
+                             "name": match['name'],
+                             "sku": match.get('sku', 'N/A')
+                         }
+                         entities.append(p_entity)
+                         found_for_cand = True
+            
+            if not found_for_cand and len(cand) > 3: # Original contact fuzzy logic
                 match = self._fuzzy_find_contact(cand)
                 if match:
                      if not any(e['id'] == match['id'] for e in entities):
@@ -833,10 +859,10 @@ class OmnibrainSaaSEngine:
             # Create search index (name and sku)
             search_map = {}
             for p in all_products:
-                name_key = p['name'].lower()
-                sku_key = str(p['sku']).lower()
-                search_map[name_key] = p
-                search_map[sku_key] = p
+                name_key = p.get('name', '').lower()
+                sku_key = str(p.get('sku', '')).lower()
+                if name_key: search_map[name_key] = p
+                if sku_key: search_map[sku_key] = p
             
             # 2. Match
             targets = list(search_map.keys())
@@ -844,7 +870,7 @@ class OmnibrainSaaSEngine:
             
             if matches:
                 res = search_map[matches[0]]
-                logger.info(f"Product Fuzzy Match: '{candidate}' -> '{res['name']}' (SKU: {res['sku']})")
+                logger.info(f"Product Fuzzy Match: '{candidate}' -> '{res.get('name')}' (SKU: {res.get('sku')})")
                 return res
         except Exception as e:
             logger.warning(f"Product Fuzzy Search Failed: {e}")
@@ -883,6 +909,29 @@ class OmnibrainSaaSEngine:
         return None
 
     def _resolve_business_data(self, query: str, context: Optional[Dict] = None) -> Optional[str]:
+        """
+        Wrapper for Business Data Resolution that appends Universal Smart Suggestions.
+        """
+        # 1. Execute Core Logic
+        result = self._resolve_business_data_internal(query, context)
+        
+        # 2. Append Suggestions if result is a string and not an error/chart
+        if result and isinstance(result, str) and not result.startswith("⚠️") and "[CHART_DATA]" not in result and "Suggested Next Questions" not in result:
+            # Determine Context
+            ctx = "general"
+            q_lower = query.lower()
+            if any(w in q_lower for w in ["sales", "mauzo", "sell", "amount", "revenue"]): ctx = "sales"
+            elif any(w in q_lower for w in ["purchase", "manunuzi", "buy", "ununu"]): ctx = "purchase"
+            elif any(w in q_lower for w in ["stock", "inventory", "stoo", "mzigo"]): ctx = "inventory"
+            elif any(w in q_lower for w in ["customer", "mteja", "contact"]): ctx = "customer"
+            
+            # Generate and Append
+            suggestions = self._generate_universal_suggestions(ctx, "")
+            result += f"\n{suggestions}"
+            
+        return result
+
+    def _resolve_business_data_internal(self, query: str, context: Optional[Dict] = None) -> Optional[str]:
         """Resolve specific data queries via the SQL Bridge."""
         # 0.0 SOVEREIGN LINGUISTIC PRE-PROCESSING (Sheng, Dialect, Nuance)
         q = self.linguistic.process_advanced_request(query) if self.linguistic else query
@@ -923,6 +972,10 @@ class OmnibrainSaaSEngine:
         # Phase 6: Chart Generation / Export (ABSOLUTE PRIORITY)
         if any(w in cleaned for w in ["excel", "csv", "export", "ripoti", "pakua", "download"]):
              return self._resolve_excel_export(q)
+
+        # 0.05 PURCHASE INTELLIGENCE (Priority above Entity Resolution)
+        if any(w in q for w in ["purchase", "manunuzi"]) and any(w in q for w in ["analyze", "chambua", "range", "wigo", "supplier", "risk", "intelligence", "kubwa", "big", "more"]):
+             return self._run_purchase_intelligence(q)
         
         # 0.1 ENTITY-AWARE FINANCIAL LOOKUP (Priority 1 for "Deni la Paschal")
         entities = self._resolve_entities(q, domain="contacts")
@@ -1030,13 +1083,27 @@ class OmnibrainSaaSEngine:
 
             # Case C: Visualization (Graphs)
             if any(w in cleaned for w in ["graph", "chart", "plot", "mchoro", "trend"]):
-                 chart_data = self.vis_engine.generate_customer_spending_trend(c_id)
-                 return f"Hapa kuna grafu ya matumizi ya {c_name}:\n\n[CHART_DATA]: {json.dumps(chart_data)}"
+                 # Check for explicit Global intent (Phase 45 Update)
+                 is_global = any(w in cleaned for w in ["vs", "compare", "total", "jumla", "kampuni", "company", "global", "biashara", "sales", "purchases", "income", "expense", "mauzo", "manunuzi"])
+                 
+                 # Only use customer chart if NO global keywords are present (or if we are sure).
+                 # This fixes "draw graph of purchases" accidentally showing a chart for a customer named "Purchases" or fuzzy match.
+                 if c_id and not is_global:
+                     chart_data = self.vis_engine.generate_customer_spending_trend(c_id)
+                     return f"Hapa kuna grafu ya matumizi ya {c_name}:\n\n[CHART_DATA]: {json.dumps(chart_data)}"
+                 else:
+                     # Global Company Trend
+                     target_year = resolved_year if resolved_year else None
+                     chart_data = self.vis_engine.generate_global_spending_trend(target_year)
+                     return f"Hapa kuna grafu ya mauzo na manunuzi ya kampuni ({target_year or 'Mwaka huu'}):\n\n[CHART_DATA]: {json.dumps(chart_data)}"
 
             # Case D: Debt / Deni / Balance (Legacy -> Standardized)
-            if any(w in cleaned for w in ["deni", "debt", "balance", "dai", "anadaiwa"]):
+            if any(w in cleaned for w in ["deni", "debt", "balance", "dai", "anadaiwa", "owe", "owes"]):
                  standard_year = str(resolved_year) if resolved_year else None
-                 return self._resolve_contact_debt(contact_entity, standard_year, month_key, period)
+                 if contact_entity:
+                     return self._resolve_contact_debt(contact_entity, standard_year, month_key, period)
+                 else:
+                     return self._resolve_debt_overview()
 
             # Case E: Ledger / Statement (Legacy -> Standardized)
             if any(w in cleaned for w in ["ledger", "statement", "historia", "invoice", "risiti"]):
@@ -1100,6 +1167,9 @@ class OmnibrainSaaSEngine:
             return self._run_global_logistics(q)
         if any(w in q for w in ["tax rate", "vat in", "corporate tax"]): return self._run_global_tax_query(q)
         
+        if any(w in q for w in ["purchase", "manunuzi"]) and any(w in q for w in ["analyze", "chambua", "range", "wigo", "supplier", "risk", "intelligence", "kubwa", "big", "more"]):
+             return self._run_purchase_intelligence(q)
+
         # Phase 32: Enterprise Core Routing
         if any(w in q for w in ["price", "discount", "offer"]): return self._run_sales_intelligence(q)
         if any(w in q for w in ["stock", "expiry", "shrinkage", "loss"]): return self._run_inventory_check(q)
@@ -1276,7 +1346,7 @@ class OmnibrainSaaSEngine:
                 p = prods[0]
                 self.last_product = p # Update context
                 movement = self._get_stock_movement(p['id'])
-                return f"Ripoti ya stoo ya bidhaa '{p['name']}' (SKU: {p['sku']}):\n\n{movement}"
+                return f"Ripoti ya stoo ya bidhaa '{p['name']}' (SKU: {p.get('sku', 'N/A')}):\n\n{movement}"
             
             # If no product in query, check context
             if self.last_product:
@@ -1334,18 +1404,47 @@ class OmnibrainSaaSEngine:
             total = res[0]['total'] if res and res[0]['total'] else 0
             return f"The total sales for Shakira Ismail this month corresponds to a transaction volume of {total:,.2f} TZS. (Mauzo ya Shakira Ismail mwezi huu ni {total:,.2f} TZS)."
 
-        # 5. Specialized Contact Handlers (Debt, Ledger, Preferences)
-        if any(w in cleaned for w in ["debt", "deni", "preference", "ledger", "favor", "penda", "buy"]):
+        # 5. Specialized Contact Handlers (Debt, Ledger, Preferences, Deep Info, Habits, Payments)
+        cleaned_q = q.lower()
+        if any(w in cleaned_q for w in ["debt", "deni", "preference", "ledger", "favor", "penda", "buy", "info", "details", "profile", "kuhusu", "taarifa", "shop", "payment", "malipo"]):
+            
+            # Payment History
+            if "payment history" in cleaned_q or "historia ya malipo" in cleaned_q:
+                # Extract name
+                name_part = cleaned_q.replace("payment history for", "").replace("show payment history", "").strip()
+                return self._resolve_payment_history(name_part)
+
+            # Shopping Habits
+            if "when does" in cleaned_q and "shop" in cleaned_q:
+                name_part = cleaned_q.replace("when does", "").replace("usually shop", "").replace("shop?", "").strip()
+                return self._analyze_shopping_habits(name_part)
+
             target_contacts = self._resolve_entities(q, "contacts")
             if target_contacts:
                 c = target_contacts[0]
-                if any(w in cleaned for w in ["debt", "deni"]):
+                
+                # 5a. Super Advanced Customer Profile
+                if any(w in cleaned_q for w in ["info", "details", "profile", "kuhusu", "report", "taarifa"]):
+                    return self._run_deep_customer_intelligence(c)
+
+                if any(w in cleaned_q for w in ["debt", "deni"]):
                     standard_year = str(resolved_year) if resolved_year else None
                     return self._resolve_contact_debt(c, standard_year, month_key, period)
-                if any(w in cleaned for w in ["preference", "penda", "favor", "nunua"]):
+                if any(w in cleaned_q for w in ["preference", "penda", "favor", "nunua"]):
                     return self._resolve_contact_preferences(c)
-                if "ledger" in cleaned:
-                    return f"Mteja **{c['name']}** ana historia nzuri ya malipo. (Ledger extraction in progress...)"
+            if "ledger" in cleaned:
+                # Fallback content if needed or just remove this if c is not resolved
+                if target_contacts:
+                     return f"Mteja **{c['name']}** ana historia nzuri ya malipo. (Ledger extraction in progress...)"
+                return "Tafadhali taja jina la mteja kwa ajili ya ledger."
+
+        # 0.00001 FINAL FALLBACK: LOCAL LLM (Phase 2 Upgrade)
+        # If no regex/SQL match found, ask the Local AI.
+        if HAS_LLM_CONFIG:
+            print(f"[OMNIBRAIN] No rule matched. Asking Local LLM ({DEFAULT_MODEL})...")
+            llm_response = self._query_local_llm(cleaned)
+            if llm_response:
+                return f"🤖 **AI Evaluation**:\n{llm_response}"
 
         # 0.00 CONVERSATIONAL ENGINE (FINAL FALLBACK - PRIORITY 9)
         # Handle Greetings & Socials (Only if query is short or explicitly a greeting)
@@ -1359,6 +1458,14 @@ class OmnibrainSaaSEngine:
                 "- Au kuchora grafu ya biashara yako."
             )
         
+        # 0.00001 FINAL FALLBACK: LOCAL LLM (Phase 2 Upgrade)
+        # If no regex/SQL match found, ask the Local AI.
+        if HAS_LLM_CONFIG:
+            print(f"[OMNIBRAIN] No rule matched. Asking Local LLM ({DEFAULT_MODEL})...")
+            llm_response = self._query_local_llm(cleaned)
+            if llm_response:
+                return f"🤖 **AI Evaluation**:\n{llm_response}"
+
         # Handle Gratitude & Closings
         thanks_words = ["asante", "shukrani", "thanks", "thank you", "kazi njema", "goodbye", "kwaheri", "poa"]
         if any(re.search(rf'\b{w}\b', q) for w in thanks_words):
@@ -1379,7 +1486,7 @@ class OmnibrainSaaSEngine:
 
         # 6. Universal Intent Detection Engine
         intent_map = {
-            "sales": {"type": "sell", "label": "mauzo", "keywords": ["sales", "sale", "mauzo", "transaction", "muamala", "revenue", "mapato"]},
+            "sales": {"type": "sell", "label": "mauzo", "keywords": ["sales", "sale", "mauzo", "transaction", "muamala", "revenue", "mapato", "order"]},
             "expenses": {"type": "expense", "label": "matumizi", "keywords": ["expenses", "expense", "matumizi", "gharama"]},
             "purchases": {"type": "purchase", "label": "manunuzi", "keywords": ["purchases", "purchase", "manunuzi", "ununuzi", "buy", "pachizi", "stock in", "mzigo", "nilivyonunua", "niliyochukua"]}
         }
@@ -1427,10 +1534,33 @@ class OmnibrainSaaSEngine:
 
             if is_list_request or len(q.split()) <= 2:
                 # If it's a very short query like "Purchases" or "Manunuzi", also give the list
-                return self._resolve_transaction_list(t_type, t_label, year, month, period)
+                limit = 100 if any(w in cleaned for w in ["all", "zote", "yote", "vyote", "historia"]) else 20
+                return self._resolve_transaction_list(t_type, t_label, year, month, period, limit=limit)
 
             # Visual Interaction Engine moved to top (Priority 1)
             # Legacy block removed.
+
+            # Specific range resolution (Format: from X to Y)
+            range_match = re.search(r'(?:from|kuanzia)\s+(\d{1,2}[/-]\d{1,2}[/-]\d{4}|\d{4}-\d{1,2}-\d{1,2})\s+(?:to|hadi|mpaka)\s+(\d{1,2}[/-]\d{1,2}[/-]\d{4}|\d{4}-\d{1,2}-\d{1,2})', q)
+            if range_match:
+                d1_raw, d2_raw = range_match.groups()
+                def parse_dt(d_str):
+                    if '-' in d_str and len(d_str.split('-')[0]) == 4: return d_str # Already YYYY-MM-DD
+                    parts = re.split(r'[/-]', d_str)
+                    return f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+                
+                s_date = parse_dt(d1_raw)
+                e_date = parse_dt(d2_raw)
+                
+                if is_list_request or "list" in q or "orodha" in q:
+                     return self._resolve_transaction_list(t_type, t_label, start_date=s_date, end_date=e_date, limit=100)
+                
+                # If not a list request, give sum
+                res = self._execute_erp_query(
+                    f"SELECT SUM(final_total) as total FROM transactions WHERE transaction_date BETWEEN '{s_date} 00:00:00' AND '{e_date} 23:59:59' AND type='{t_type}'"
+                )
+                total = res[0]['total'] if res and res[0]['total'] else 0
+                return f"Jumla ya {t_label} kuanzia {s_date} hadi {e_date} ni {total:,.2f} TZS."
 
             # Specific Day Resolution (Format: tarehe 21)
             day_match = re.search(r'\btarehe\s+(\d{1,2})\b', q)
@@ -1885,23 +2015,20 @@ class OmnibrainSaaSEngine:
 
     def _resolve_contact_debt(self, contact: Dict, year: Optional[str] = None, month: Optional[str] = None, period: Optional[str] = None) -> str:
         """Get debt details for a specific contact."""
-        # 1. Construct Time Filter
-        time_clause = ""
-        label = "safari hii"
-        if period == "today": time_clause = " AND DATE(transaction_date) = CURDATE()"; label = "leo"
-        elif period == "yesterday": time_clause = " AND DATE(transaction_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)"; label = "jana"
-        elif year and month:
-            m_num = month.replace("month_", "")
-            time_clause = f" AND DATE_FORMAT(transaction_date, '%Y-%m') = '{year}-{m_num}'"
-            label = f"mwezi {m_num}/{year}"
-        elif year:
-            time_clause = f" AND DATE_FORMAT(transaction_date, '%Y') = '{year}'"
-            label = f"mwaka {year}"
+        # 1. Debt is Cumulative (Time filters only apply to the label, not the calculation)
+        # We want TOTAL outstanding debt, not just debt incurred in a specific month.
+        label = "jumla"
+        if period == "today": label = "leo"
+        elif year: label = f"hadi {year}"
             
         res = self._execute_erp_query(
-            f"SELECT SUM(final_total - IFNULL(amount_paid, 0)) as total_debt FROM transactions "
-            f"WHERE contact_id = %s AND status != 'annulled'{time_clause}",
-            (contact['id'],)
+            """
+            SELECT 
+                (SELECT SUM(final_total) FROM transactions WHERE contact_id = %s AND status != 'annulled' AND status != 'draft' AND (type='sell' OR type='opening_balance')) -
+                (SELECT IFNULL(SUM(tp.amount), 0) FROM transaction_payments tp JOIN transactions t ON tp.transaction_id = t.id WHERE t.contact_id = %s AND t.status != 'annulled' AND t.status != 'draft' AND (t.type='sell' OR t.type='opening_balance'))
+            as total_debt
+            """,
+            (contact['id'], contact['id'])
         )
         debt = res[0]['total_debt'] if res and res[0]['total_debt'] else 0
         if debt <= 0:
@@ -1910,12 +2037,40 @@ class OmnibrainSaaSEngine:
         # Get age of oldest debt
         age_res = self._execute_erp_query(
             "SELECT DATEDIFF(NOW(), MIN(transaction_date)) as days FROM transactions "
-            "WHERE contact_id = %s AND (final_total - amount_paid) > 0",
+            "WHERE contact_id = %s AND payment_status != 'paid' AND status = 'final'",
             (contact['id'],)
         )
         days = age_res[0]['days'] if age_res and age_res[0]['days'] else "N/A"
         
         return f"Deni la **{contact['name']}** ({label}) ni **{float(debt):,.2f} TZS**.\\nDeni hili lina takriban siku **{days}** tangu kuanza."
+
+    def _resolve_debt_overview(self) -> str:
+        """Get a list of all customers who owe money."""
+        sql = """
+            SELECT 
+                c.name,
+                (SELECT SUM(final_total) FROM transactions WHERE contact_id = c.id AND status != 'annulled' AND status != 'draft' AND (type='sell' OR type='opening_balance')) -
+                (SELECT IFNULL(SUM(tp.amount), 0) FROM transaction_payments tp JOIN transactions t ON tp.transaction_id = t.id WHERE t.contact_id = c.id AND t.status != 'annulled' AND t.status != 'draft' AND (t.type='sell' OR t.type='opening_balance'))
+            as total_debt
+            FROM contacts c
+            WHERE c.type = 'customer'
+            HAVING total_debt > 0
+            ORDER BY total_debt DESC
+            LIMIT 10
+        """
+        res = self._execute_erp_query(sql)
+        if not res:
+            return "✅ **No outstanding debts.** All customers have paid their balances."
+        
+        lines = ["📋 **Outstanding Customer Debts (Top 10)**"]
+        total_outstanding = 0
+        for r in res:
+            debt = float(r['total_debt'])
+            total_outstanding += debt
+            lines.append(f"- **{r['name']}**: {debt:,.0f} TZS")
+            
+        lines.append(f"\n💰 **Total Outstanding (Top 10):** {total_outstanding:,.0f} TZS")
+        return "\n".join(lines)
 
     def _resolve_contact_preferences(self, contact: Dict) -> str:
         """Identify top products for a specific contact (Customer Preferences)."""
@@ -1984,6 +2139,263 @@ class OmnibrainSaaSEngine:
         top = [r['name'] for r in res] if res else ["Loading..."]
         return f"Retail Flow: '{top[0]}' is currently the anchor product for your store traffic."
 
+    def _generate_universal_suggestions(self, context: str, entity_name: str = None) -> str:
+        """
+        Universal Suggestion Engine: Generates 3 random, context-aware follow-up questions.
+        """
+        import random
+        pool = []
+        
+        if context == "customer":
+            pool = [
+                f"List last 5 orders for {entity_name}",
+                f"Show payment history for {entity_name}",
+                f"What is the churn risk for {entity_name}?",
+                f"Deni la {entity_name} ni kiasi gani?",
+                f"Recommend products for {entity_name}",
+                f"When does {entity_name} usually shop?",
+                f"Compare {entity_name} with top customers",
+            ]
+        elif context == "sales":
+            pool = [
+                "Compare sales this month vs last month",
+                "Show hourly sales peak",
+                "List top 5 selling products",
+                "Who is the best salesperson?",
+                "Analyze sales by category",
+                "Show sales trends for 2026"
+            ]
+        elif context == "purchase":
+            pool = [
+                "Analyze purchases by category",
+                "Who is my top supplier?",
+                "Draw graph of purchases this year",
+                "Show purchase trends",
+                "List recent purchase orders"
+            ]
+        elif context == "inventory":
+            pool = [
+                "Show low stock items",
+                "List products with high stock but low sales",
+                "Value of current inventory",
+                "Analyze dead stock",
+                "Recommend reorder quantities"
+            ]
+        else: # General
+            pool = [
+                "Show business health",
+                "List top selling products",
+                "Who owes me money?",
+                "Show expenses for this month",
+                "Analyze profit margin"
+            ]
+            
+        # Select 3 unique random suggestions
+        selected = random.sample(pool, min(len(pool), 3))
+        
+        blocks = ["\n👀 **Suggested Next Questions:**"]
+        for q in selected:
+            blocks.append(f"👉 *\"{q}\"*")
+            
+        return "\n".join(blocks)
+
+    def _analyze_shopping_habits(self, contact_name: str) -> str:
+        """Analyze shopping habits for a specific customer."""
+        # Resolve contact first
+        contacts = self._resolve_entities(contact_name, "contacts")
+        if not contacts: return f"Sijampata mteja mwenye jina **{contact_name}**."
+        
+        c = contacts[0]
+        sql = """
+            SELECT 
+                DAYNAME(transaction_date) as day, 
+                HOUR(transaction_date) as hr,
+                COUNT(*) as cnt 
+            FROM transactions 
+            WHERE contact_id=%s AND type='sell' 
+            GROUP BY day, hr 
+            ORDER BY cnt DESC LIMIT 1
+        """
+        res = self._execute_erp_query(sql, (c['id'],))
+        
+        if not res: return f"**{c['name']}** bado hana historia ya kutosha ya manunuzi."
+        
+        fav_day = res[0]['day']
+        fav_hour = int(res[0]['hr'])
+        time_slot = "Morning" if fav_hour < 12 else "Afternoon" if fav_hour < 17 else "Evening"
+        
+        return f"📅 **Habit Analysis**: {c['name']} usually shops on **{fav_day}s** in the **{time_slot}** (around {fav_hour}:00)."
+
+    def _resolve_payment_history(self, contact_name: str) -> str:
+        """Show recent payment history."""
+        contacts = self._resolve_entities(contact_name, "contacts")
+        if not contacts: return f"Sijampata mteja mwenye jina **{contact_name}**."
+        
+        c = contacts[0]
+        sql = """
+            SELECT tp.paid_on, tp.amount, tp.method, t.invoice_no 
+            FROM transaction_payments tp
+            JOIN transactions t ON tp.transaction_id = t.id
+            WHERE t.contact_id = %s
+            ORDER BY tp.paid_on DESC LIMIT 5
+        """
+        res = self._execute_erp_query(sql, (c['id'],))
+        
+        if not res: return f"**{c['name']}** hana rekodi za malipo ya hivi karibuni."
+        
+        lines = [f"💳 **Payment History for {c['name']}**"]
+        for r in res:
+            lines.append(f"- {r['paid_on']}: **{float(r['amount']):,.0f} TZS** via {r['method']} (Inv: {r['invoice_no']})")
+            
+        return "\n".join(lines)
+
+    def _run_deep_customer_intelligence(self, contact: Dict) -> str:
+        """
+        Sovereign Intelligence: Generates a 'Super Advanced' profile for a customer.
+        Metrics: LTV, Profit, Behavior Habits, Churn Risk, Favorite Items, Debt Score, Recommendations.
+        """
+        c_id = contact['id']
+        c_name = contact['name']
+        
+        # 1. Lifetime Stats & Profitability (Financial DNA)
+        sql_stats = """
+            SELECT 
+                COUNT(t.id) as visit_count,
+                SUM(t.final_total) as ltv,
+                MAX(t.transaction_date) as last_seen,
+                (SELECT SUM(final_total) FROM transactions WHERE contact_id = %s AND type='sell' AND status='final') -
+                (SELECT IFNULL(SUM(amount), 0) FROM transaction_payments tp JOIN transactions t2 ON tp.transaction_id = t2.id WHERE t2.contact_id = %s AND t2.type='sell' AND t2.status='final') as debt,
+                SUM(
+                    (l.unit_price_inc_tax - COALESCE(v.default_purchase_price, 0)) * l.quantity
+                ) as gross_profit
+            FROM transactions t
+            LEFT JOIN transaction_sell_lines l ON t.id = l.transaction_id
+            LEFT JOIN variations v ON l.variation_id = v.id
+            WHERE t.contact_id=%s AND t.type='sell' AND t.status='final'
+        """
+        stats = self._execute_erp_query(sql_stats, (c_id, c_id, c_id))[0]
+        
+        ltv = float(stats['ltv'] or 0)
+        visits = int(stats['visit_count'] or 0)
+        debt = float(stats['debt'] or 0)
+        profit = float(stats['gross_profit'] or 0)
+        last_seen = stats['last_seen']
+        
+        margin = (profit / ltv * 100) if ltv > 0 else 0
+        profit_status = "💎 High Value" if margin > 20 else "⚠️ Low Margin"
+        
+        if visits == 0:
+            return f"⚠️ **{c_name}** hana rekodi zozote za mauzo (New Customer)."
+            
+        # 2. Risk & Frequency Analysis
+        import datetime
+        now = datetime.datetime.now()
+        days_since_last = (now - last_seen).days if last_seen else 0
+        avg_value = ltv / visits
+        
+        # Churn Risk
+        risk_level = "🟢 LOYAL"
+        if days_since_last > 60: risk_level = "🔴 CHURNED (Lost)"
+        elif days_since_last > 30: risk_level = "🟡 AT RISK (Dormant)"
+        
+        # 3. Behavioral DNA (Habits)
+        sql_habits = """
+            SELECT 
+                DAYNAME(transaction_date) as day, 
+                HOUR(transaction_date) as hr,
+                COUNT(*) as cnt 
+            FROM transactions 
+            WHERE contact_id=%s AND type='sell' 
+            GROUP BY day, hr 
+            ORDER BY cnt DESC LIMIT 1
+        """
+        habit_res = self._execute_erp_query(sql_habits, (c_id,))
+        if habit_res:
+            fav_day = habit_res[0]['day']
+            fav_hour = int(habit_res[0]['hr'])
+            time_slot = "Morning" if fav_hour < 12 else "Afternoon" if fav_hour < 17 else "Evening"
+            behavior_str = f"Shopped mostly on **{fav_day}s** in the **{time_slot}**."
+        else:
+            behavior_str = "No consistent habit yet."
+
+        # 4. Favorite Products & Recommendation Engine
+        sql_fav = """
+            SELECT p.name, p.category_id, c.name as cat_name, SUM(l.quantity) as qty
+            FROM transaction_sell_lines l
+            JOIN transactions t ON l.transaction_id = t.id
+            JOIN variations v ON l.variation_id = v.id
+            JOIN products p ON v.product_id = p.id
+            LEFT JOIN categories c ON p.category_id = c.id
+            WHERE t.contact_id=%s AND t.type='sell'
+            GROUP BY p.id ORDER BY qty DESC LIMIT 3
+        """
+        favs = self._execute_erp_query(sql_fav, (c_id,))
+        fav_str = ", ".join([f"{f['name']}" for f in favs]) if favs else "None"
+        
+        # AI Recommendation: Find best seller in their top category that they HAVEN'T bought
+        recommendation = "N/A"
+        category_affinity = "Diverse Shopper" 
+        
+        if favs:
+             if favs[0]['category_id']:
+                top_cat_id = favs[0]['category_id']
+                top_cat_name = favs[0]['cat_name'] or "Unknown Category"
+                category_affinity = f"Mainly buys **{top_cat_name}**"
+                
+                sql_rec = """
+                    SELECT p.name, SUM(l.quantity) as qty
+                    FROM transaction_sell_lines l
+                    JOIN variations v ON l.variation_id = v.id
+                    JOIN products p ON v.product_id = p.id
+                    WHERE p.category_id = %s
+                    AND p.id NOT IN (
+                        SELECT DISTINCT v2.product_id 
+                        FROM transaction_sell_lines l2 
+                        JOIN transactions t2 ON l2.transaction_id = t2.id 
+                        JOIN variations v2 ON l2.variation_id = v2.id
+                        WHERE t2.contact_id = %s
+                    )
+                    GROUP BY p.id ORDER BY qty DESC LIMIT 1
+                """
+                rec_res = self._execute_erp_query(sql_rec, (top_cat_id, c_id))
+                if rec_res:
+                    recommendation = f"🔥 **{rec_res[0]['name']}** (Popular in {top_cat_name} but not yet bought)"
+                else:
+                    recommendation = "Customer has bought all top items in their favorite category."
+        
+        # 5. Debt Health
+        debt_status = "✅ Clean"
+        if debt > 0:
+            ratio = (debt / ltv * 100) if ltv > 0 else 100
+            if ratio > 50: debt_status = "🔴 CRITICAL DEBT"
+            elif ratio > 20: debt_status = "🟡 HIGH DEBT"
+            else: debt_status = f"🔵 Manageable ({ratio:.1f}%)"
+            
+        # 6. Generate Smart Suggestions
+        suggestions_block = self._generate_universal_suggestions("customer", c_name)
+
+        report = f"""\
+# 👤 ULTRA PROFILE: {c_name}
+**"Sovereign Intelligence v2.0"**
+
+## 💰 FINANCIAL DNA (Fedha)
+*   **LTV:** {ltv:,.0f} TZS
+*   **Gross Profit:** {profit:,.0f} TZS (**{margin:.1f}% Margin**) [{profit_status}]
+*   **Current Debt:** {debt:,.0f} TZS [{debt_status}]
+
+## 🧠 BEHAVIORAL DNA (Tabia)
+*   **Patterns:** {behavior_str}
+*   **Affinity:** {category_affinity}
+*   **Visits:** {visits} (Avg: {avg_value:,.0f} TZS/visit)
+*   **Risk Status:** {risk_level} (Last seen {days_since_last} days ago)
+
+## ❤️ FAVORITES & OPPORTUNITY
+*   **Loves:** {fav_str}
+*   **🚀 AI Opportunity:** {recommendation}
+
+{suggestions_block}
+"""
+        return report
     def _analyze_pharmacy_intelligence(self) -> str:
         """Heuristics for Pharmaceutical Inventory & Expiry Management."""
         sql = "SELECT name, expiry_date FROM products WHERE expiry_date <= DATE_ADD(NOW(), INTERVAL 3 MONTH)"
@@ -2179,6 +2591,96 @@ class OmnibrainSaaSEngine:
             if country in query.upper().replace(" ", "_"):
                 return self.global_tax.get_tax_profile(country)
         return "Country tax profile not found in global index."
+
+    def _run_purchase_intelligence(self, query: str) -> str:
+        """
+        Deep Purchase Intelligence (Direct Implementation)
+        Analyzes supplier reliability, pricing trends, and range-based spending.
+        """
+        lang = 'sw' if any(w in query for w in ['kwa', 'na', 'ya', 'cha']) else 'en'
+        
+        # 1. Scoping (Last 30 Days)
+        sql_stats = "SELECT SUM(final_total) as total, COUNT(id) as count FROM transactions WHERE type='purchase' AND transaction_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)"
+        res_stats = self._execute_erp_query(sql_stats)
+        total_purchases = float(res_stats[0]['total'] or 0) if res_stats and res_stats[0]['total'] else 0
+        count_purchases = int(res_stats[0]['count'] or 0) if res_stats else 0
+
+        # 2. Range-Based Analysis (Strategic Bucketing)
+        # High Value (> 10M), Medium (1M-10M), Low (< 1M)
+        sql_ranges = """
+            SELECT 
+                SUM(CASE WHEN final_total > 10000000 THEN 1 ELSE 0 END) as count_high,
+                SUM(CASE WHEN final_total > 10000000 THEN final_total ELSE 0 END) as val_high,
+                SUM(CASE WHEN final_total BETWEEN 1000000 AND 10000000 THEN 1 ELSE 0 END) as count_mid,
+                SUM(CASE WHEN final_total BETWEEN 1000000 AND 10000000 THEN final_total ELSE 0 END) as val_mid,
+                SUM(CASE WHEN final_total < 1000000 THEN 1 ELSE 0 END) as count_low,
+                SUM(CASE WHEN final_total < 1000000 THEN final_total ELSE 0 END) as val_low
+            FROM transactions 
+            WHERE type='purchase' AND transaction_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+        """
+        res_ranges = self._execute_erp_query(sql_ranges)
+        ranges = res_ranges[0] if res_ranges else {}
+        
+        c_high, v_high = int(ranges.get('count_high') or 0), float(ranges.get('val_high') or 0)
+        c_mid, v_mid = int(ranges.get('count_mid') or 0), float(ranges.get('val_mid') or 0)
+        c_low, v_low = int(ranges.get('count_low') or 0), float(ranges.get('val_low') or 0)
+
+        # 3. Supplier Concentration
+        sql_suppliers = """
+            SELECT c.name, SUM(t.final_total) as val, COUNT(t.id) as freq
+            FROM transactions t
+            JOIN contacts c ON c.id=t.contact_id
+            WHERE t.type='purchase' AND t.transaction_date >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+            GROUP BY t.contact_id
+            ORDER BY val DESC LIMIT 5
+        """
+        top_suppliers = self._execute_erp_query(sql_suppliers)
+
+        # --- SCORING ---
+        supplier_risk = 0
+        if top_suppliers and total_purchases > 0:
+            top_1_val = float(top_suppliers[0]['val'])
+            top_1_ratio = (top_1_val / total_purchases)
+            supplier_risk = min(100, top_1_ratio * 100 * 1.5)
+        
+        # Language Mapping
+        h_exec = "EXECUTIVE SUMMARY" if lang == 'en' else "MUHTASARI WA HALI"
+        h_ranges = "PURCHASE RANGES (STRATEGIC)" if lang == 'en' else "MADARAJA YA MANUNUZI"
+        h_nums = "TOP SUPPLIERS" if lang == 'en' else "WASAMBAZAJI WAKUU"
+        h_risk = "RISKS & WARNINGS" if lang == 'en' else "HATARI NA TAHADHARI"
+        h_strat = "STRATEGIC ADVICE" if lang == 'en' else "USHAURI WA KIMKAKATI"
+        
+        report = f"""
+# 📦 {'PURCHASE INTELLIGENCE' if lang == 'en' else 'BIASHARA YA MANUNUZI'}
+
+## 1. {h_exec}
+**{'Total Purchases' if lang == 'en' else 'Jumla ya Manunuzi'} (30D):** {total_purchases:,.0f} TZS
+**Activity:** {count_purchases} orders.
+**Status:** {'⚠️ High dependence' if supplier_risk > 60 else '✅ Diversified'}
+
+## 2. {h_ranges}
+| Range | Count | Value (TZS) | Area |
+| :--- | :--- | :--- | :--- |
+| **High (>10M)** | {c_high} | {v_high:,.0f} | 🏭 Bulk Stock / Assets |
+| **Mid (1M-10M)** | {c_mid} | {v_mid:,.0f} | 🚚 Restocking |
+| **Small (<1M)** | {c_low} | {v_low:,.0f} | 🛒 Daily Needs |
+
+## 3. {h_nums}
+| Supplier | Volume | Freq |
+| :--- | :--- | :--- |
+"""
+        for s in (top_suppliers or [])[:3]:
+            report += f"| **{s['name']}** | {float(s['val']):,.0f} | {s['freq']} |\n"
+
+        report += f"""
+## 4. {h_risk}
+*   **Supplier Risk:** {int(supplier_risk)}/100
+*   **Action:** {'Check pricing' if lang == 'en' else 'Kagua bei'} for '{top_suppliers[0]['name'] if top_suppliers else "top vendors"}'.
+
+## 5. {h_strat}
+📢 **{'Negotiate' if lang == 'en' else 'Omba Punguzo'}:** {'Focus negotiations on the High Value (>10M) bucket to maximize savings.' if lang == 'en' else 'Elekeza nguvu zako kwenye manunuzi makubwa (>10M) kupata punguzo la maana.'}
+"""
+        return report
 
     def _run_sales_intelligence(self, query: str) -> str:
         """Proxies to Sales Intelligence Core."""
@@ -3264,10 +3766,12 @@ class OmnibrainSaaSEngine:
             except Exception as e:
                 logger.error(f"OMNIBRAIN: Failed to load state: {e}")
 
-    def _resolve_transaction_list(self, t_type: str, t_label: str, year: Optional[str] = None, month: Optional[str] = None, period: Optional[str] = None) -> str:
+    def _resolve_transaction_list(self, t_type: str, t_label: str, year: Optional[str] = None, month: Optional[str] = None, period: Optional[str] = None, limit: int = 20, start_date: str = None, end_date: str = None) -> str:
         """Fetch and format a list of recent transactions for a specific type and time period."""
         time_filter = "1=1"
-        if period == "today": time_filter = "DATE(transaction_date) = CURDATE()"
+        if start_date and end_date:
+             time_filter = f"transaction_date BETWEEN '{start_date} 00:00:00' AND '{end_date} 23:59:59'"
+        elif period == "today": time_filter = "DATE(transaction_date) = CURDATE()"
         elif period == "yesterday": time_filter = "DATE(transaction_date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)"
         elif year and month:
             m_num = month.replace("month_", "")
@@ -3275,8 +3779,8 @@ class OmnibrainSaaSEngine:
         elif year:
             time_filter = f"transaction_date BETWEEN '{year}-01-01' AND '{year}-12-31 23:59:59'"
         
-        # Priority 1: Fetch last 20 entries (Increased for "Make it bigger" request)
-        sql = f"SELECT id, invoice_no, transaction_date, final_total, payment_status FROM transactions WHERE {time_filter} AND type='{t_type}' ORDER BY transaction_date DESC LIMIT 20"
+        # Priority 1: Fetch last entries (Dynamic Limit)
+        sql = f"SELECT id, invoice_no, transaction_date, final_total, payment_status FROM transactions WHERE {time_filter} AND type='{t_type}' ORDER BY transaction_date DESC LIMIT {limit}"
         res = self._execute_erp_query(sql)
         
         if not res:
@@ -3301,3 +3805,32 @@ class OmnibrainSaaSEngine:
             lines.append(f"- **{date_str}** | INV: {r['invoice_no']} | **{float(r['final_total']):,.0f} TZS** {status_icon}{item_str}")
             
         return header + "\n".join(lines)
+
+    def _query_local_llm(self, prompt: str) -> Optional[str]:
+        """
+        Connects to Local Ollama instance to generate a response.
+        """
+        import requests
+        
+        try:
+            url = f"{OLLAMA_BASE_URL}/api/generate"
+            payload = {
+                "model": DEFAULT_MODEL,
+                "prompt": prompt,
+                "system": SYSTEM_PROMPT,
+                "stream": False,
+                "options": {
+                    "temperature": 0.7
+                }
+            }
+            
+            response = requests.post(url, json=payload, timeout=LLM_TIMEOUT)
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("response", "").strip()
+            else:
+                logger.warning(f"Ollama Error: {response.status_code} - {response.text}")
+                return None
+        except Exception as e:
+            # logger.warning(f"Local LLM Connection Failed: {e}")
+            return None

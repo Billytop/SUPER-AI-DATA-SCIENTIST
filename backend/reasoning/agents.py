@@ -3504,7 +3504,27 @@ class SQLReasoningAgent(SephlightyBrain):
             total_purchases = float(row[0] or 0)
             count_purchases = int(row[1] or 0)
 
-            # 2. Supplier Concentration
+            # 2. Range-Based Analysis (Strategic Bucketing)
+            # High Value (> 10M), Medium (1M-10M), Low (< 1M)
+            sql_ranges = """
+                SELECT 
+                    SUM(CASE WHEN final_total > 10000000 THEN 1 ELSE 0 END) as count_high,
+                    SUM(CASE WHEN final_total > 10000000 THEN final_total ELSE 0 END) as val_high,
+                    SUM(CASE WHEN final_total BETWEEN 1000000 AND 10000000 THEN 1 ELSE 0 END) as count_mid,
+                    SUM(CASE WHEN final_total BETWEEN 1000000 AND 10000000 THEN final_total ELSE 0 END) as val_mid,
+                    SUM(CASE WHEN final_total < 1000000 THEN 1 ELSE 0 END) as count_low,
+                    SUM(CASE WHEN final_total < 1000000 THEN final_total ELSE 0 END) as val_low
+                FROM transactions 
+                WHERE type='purchase' AND transaction_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            """
+            cursor.execute(sql_ranges)
+            ranges = cursor.fetchone()
+            
+            c_high, v_high = int(ranges[0] or 0), float(ranges[1] or 0)
+            c_mid, v_mid = int(ranges[2] or 0), float(ranges[3] or 0)
+            c_low, v_low = int(ranges[4] or 0), float(ranges[5] or 0)
+
+            # 3. Supplier Concentration
             sql_suppliers = """
                 SELECT c.name, SUM(t.final_total) as val, COUNT(t.id) as freq
                 FROM transactions t
@@ -3516,7 +3536,7 @@ class SQLReasoningAgent(SephlightyBrain):
             cursor.execute(sql_suppliers)
             top_suppliers = cursor.fetchall()
 
-            # 3. Product Cost Volatility (Price Variance)
+            # 4. Product Cost Volatility (Price Variance)
             sql_volatility = """
                 SELECT p.name, MIN(pl.purchase_price) as minp, MAX(pl.purchase_price) as maxp, AVG(pl.purchase_price) as avgp
                 FROM purchase_lines pl
@@ -3540,7 +3560,8 @@ class SQLReasoningAgent(SephlightyBrain):
         
         # Language Mapping
         h_exec = "EXECUTIVE SUMMARY" if lang == 'en' else "MUHTASARI WA HALI"
-        h_nums = "KEY NUMBERS" if lang == 'en' else "NAMBA MUHIMU"
+        h_ranges = "PURCHASE RANGES (STRATEGIC)" if lang == 'en' else "MADARAJA YA MANUNUZI"
+        h_nums = "TOP SUPPLIERS" if lang == 'en' else "WASAMBAZAJI WAKUU"
         h_risk = "RISKS & WARNINGS" if lang == 'en' else "HATARI NA TAHADHARI"
         h_strat = "STRATEGIC ADVICE" if lang == 'en' else "USHAURI WA KIMKAKATI"
         
@@ -3552,7 +3573,14 @@ class SQLReasoningAgent(SephlightyBrain):
 **Activity:** {count_purchases} orders.
 **Status:** {'⚠️ High dependence' if supplier_risk > 60 else '✅ Diversified'}
 
-## 2. {h_nums}
+## 2. {h_ranges}
+| Range | Count | Value (TZS) | Area |
+| :--- | :--- | :--- | :--- |
+| **High (>10M)** | {c_high} | {v_high:,.0f} | 🏭 Bulk Stock / Assets |
+| **Mid (1M-10M)** | {c_mid} | {v_mid:,.0f} | 🚚 Restocking |
+| **Small (<1M)** | {c_low} | {v_low:,.0f} | 🛒 Daily Needs |
+
+## 3. {h_nums}
 | Supplier | Volume | Freq |
 | :--- | :--- | :--- |
 """
@@ -3564,8 +3592,8 @@ class SQLReasoningAgent(SephlightyBrain):
 *   **Supplier Risk:** {int(supplier_risk)}/100
 *   **Action:** {'Check pricing' if lang == 'en' else 'Kagua bei'} for '{top_suppliers[0][0] if top_suppliers else "top vendors"}'.
 
-## 6. {h_strat}
-📢 **{'Negotiate' if lang == 'en' else 'Omba Punguzo'}:** Bulk contracting is recommended.
+## 5. {h_strat}
+📢 **{'Negotiate' if lang == 'en' else 'Omba Punguzo'}:** {'Focus negotiations on the High Value (>10M) bucket to maximize savings.' if lang == 'en' else 'Elekeza nguvu zako kwenye manunuzi makubwa (>10M) kupata punguzo la maana.'}
 """
         return report
 

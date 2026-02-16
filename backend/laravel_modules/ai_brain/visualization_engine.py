@@ -84,3 +84,70 @@ class VisualizationEngine:
                 "backgroundColor": ["#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF"]
             }]
         }
+    def generate_global_spending_trend(self, year=None) -> Dict[str, Any]:
+        """
+        Line Chart: Global Company Sales vs Purchases Trend.
+        """
+        import datetime
+        target_year = str(year) if year else str(datetime.date.today().year)
+        
+        # 1. Fetch Sales (Global)
+        sql_sales = f"""
+            SELECT DATE_FORMAT(transaction_date, '%Y-%m') as month, SUM(final_total) as total
+            FROM transactions
+            WHERE type = 'sell' AND DATE_FORMAT(transaction_date, '%Y') = '{target_year}'
+            GROUP BY month
+            ORDER BY month ASC
+        """
+        res_sales = self.db._execute_erp_query(sql_sales)
+        
+        # 2. Fetch Purchases (Global)
+        sql_purchases = f"""
+            SELECT DATE_FORMAT(transaction_date, '%Y-%m') as month, SUM(final_total) as total
+            FROM transactions
+            WHERE type = 'purchase' AND DATE_FORMAT(transaction_date, '%Y') = '{target_year}'
+            GROUP BY month
+            ORDER BY month ASC
+        """
+        res_purchases = self.db._execute_erp_query(sql_purchases)
+        
+        # 3. Merge Data for Chart
+        months = sorted(list(set([r['month'] for r in res_sales] + [r['month'] for r in res_purchases])))
+        
+        # If no data found for the year, generate empty months for context
+        if not months:
+            months = [f"{target_year}-{i:02d}" for i in range(1, 13)]
+            
+        data_sales = []
+        data_purchases = []
+        
+        for m in months:
+            val_s = next((float(r['total']) for r in res_sales if r['month'] == m), 0.0)
+            val_p = next((float(r['total']) for r in res_purchases if r['month'] == m), 0.0)
+            data_sales.append(val_s)
+            data_purchases.append(val_p)
+            
+        # Format labels
+        labels = [datetime.datetime.strptime(m, "%Y-%m").strftime("%b %Y") for m in months]
+            
+        return {
+            "type": "line",
+            "title": f"Company Performance ({target_year})",
+            "labels": labels,
+            "datasets": [
+                {
+                    "label": "Total Sales",
+                    "data": data_sales,
+                    "borderColor": "#4CAF50",
+                    "backgroundColor": "rgba(76, 175, 80, 0.1)",
+                    "fill": True
+                },
+                {
+                    "label": "Total Purchases",
+                    "data": data_purchases,
+                    "borderColor": "#FF5722",
+                    "backgroundColor": "rgba(255, 87, 34, 0.1)", 
+                    "fill": True
+                }
+            ]
+        }
