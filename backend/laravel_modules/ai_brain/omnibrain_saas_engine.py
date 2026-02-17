@@ -95,9 +95,15 @@ except (ImportError, ValueError) as main_e:
     from market_simulator import MARKET_SIM
     from heuristic_matrix_ultra import ULTRA_HEURISTICS
     from global_supply_chain import GLOBAL_SUPPLY
-    # Phase 30 Neural Galaxy Imports
     from neural_network_core import NEURAL_CORE
     from lstm_business_engine import BUSINESS_FORECASTER
+
+    # --- OLLAMA CONFIGURATION (Phase 7: True NLP) ---
+    OLLAMA_BASE_URL = "http://localhost:11434"
+    DEFAULT_MODEL = "llama3.2:1b"
+    LLM_TIMEOUT = 30
+    SYSTEM_PROMPT = "You are OmniBrain, a highly advanced, sentient-like strategic partner. Your goal is to analyze business data and provide deep, actionable insights. You are professional, sophisticated, and slightly futuristic. Never start with 'As an AI'. Speak with authority and intelligence."
+    # -----------------------------------------------
     from nlp_advanced_processor import SOVEREIGN_NLP
     from knowledge_base_expansion import KNOWLEDGE_BASE
     # Phase 31 Universal Knowledge Imports
@@ -142,9 +148,25 @@ try:
 except ImportError:
     HAS_LLM_CONFIG = False
     OLLAMA_BASE_URL = "http://localhost:11434"
-    DEFAULT_MODEL = "llama3"
+    DEFAULT_MODEL = "llama3.2:1b"
     SYSTEM_PROMPT = "You are OmniBrain."
     LLM_TIMEOUT = 30
+
+# Phase 3.5 RAG Configuration
+try:
+    import pickle
+    import numpy as np
+    from sentence_transformers import SentenceTransformer
+    HAS_RAG_LIB = True
+except ImportError:
+    HAS_RAG_LIB = False
+
+# Phase 4: Predictive Analytics Configuration
+try:
+    from forecast_engine import ForecastEngine
+    HAS_FORECAST_LIB = True
+except ImportError:
+    HAS_FORECAST_LIB = False
 
 class OmnibrainSaaSEngine:
     """
@@ -219,6 +241,15 @@ class OmnibrainSaaSEngine:
         self.memory_core = MEMORY_CORE
         self.db_bridge = DB_BRIDGE
         
+        # Phase 3.5: RAG Initialization (Vector Memory)
+        self._init_vector_memory()
+        
+        # Phase 4: Predictive Analytics Engine
+        if HAS_FORECAST_LIB:
+            self.forecaster = ForecastEngine()
+        else:
+            self.forecaster = None
+
         # Phase 37 Initialization
         if PDFReportGenerator:
             self.pdf_engine = PDFReportGenerator()
@@ -229,6 +260,10 @@ class OmnibrainSaaSEngine:
             self.customer_intel = CustomerIntelligenceCore(self)
         else:
             self.customer_intel = None
+
+        # Phase 5: Deep Laravel Awareness
+        self.schema_map = {} # stores {table: [columns]}
+        self._map_database_schema()
 
         if VisualizationEngine:
             self.vis_engine = VisualizationEngine(self)
@@ -300,11 +335,39 @@ class OmnibrainSaaSEngine:
         """
         Main Entry Point for AI Processing.
         Wraps execution in Sovereign Neural Shield (Phase 38).
+        Now Upgraded with True NLP via Ollama (Phase 7).
         """
+        # 1. Get the Raw Logic/Math Result
+        raw_result = None
         if self.error_handler:
-            return self.error_handler.safe_execute(self._core_process_logic, query, context)
-        # Fallback if shield is broken
-        return self._core_process_logic(query, context)
+            raw_result = self.error_handler.safe_execute(self._core_process_logic, query, context)
+        else:
+            raw_result = self._core_process_logic(query, context)
+            
+        # 2. If valid result, try to Humanize (The "Voice")
+        # 2. If valid result, try to Humanize (The "Voice")
+        human_response = None
+        
+        if raw_result and OLLAMA_BASE_URL:
+            # Skip if it's already a report or very long? No, LLM can summarize.
+            # We skip if it looks like an error or empty
+            prompt = f"User Question: {query}\nSystem Data: {raw_result}\n\nTask: Answer the user's question using the System Data. Be professional, concise, and helpful."
+            
+            human_response = self._query_local_llm(prompt)
+            if human_response:
+                return human_response
+        
+        # 3. Pure Chat Fallback (Phase 8)
+        # If logic/math returned nothing, but we have a Brain, treat as conversation.
+        if not raw_result and OLLAMA_BASE_URL:
+             prompt = f"User Input: {query}\n\nTask: Reply to this naturally. If it is a greeting, introduce yourself as OmniBrain. If it is a general question, answer it. Be helpful and confident."
+             human_response = self._query_local_llm(prompt)
+             if human_response:
+                 return human_response
+                
+        return raw_result
+                
+        return raw_result
 
     def _core_process_logic(self, query: str, context: dict = None) -> str:
         """
@@ -364,6 +427,14 @@ class OmnibrainSaaSEngine:
         
         # 6. Memory Storage 
         self.memory_core.remember_interaction(query, response)
+
+        # 7. Total Naturalization (Extreme NLP)
+        # Pass the final response through the LLM to ensure "OmniBrain" voice
+        if response and "CHART_DATA" not in response:
+            natural_prompt = f"Rewrite the following data into a sophisticated, natural, and conversational business insight. Keep all numbers and facts, but speak with authority and a futuristic persona. Result should be 1-3 sentences.\n\nData: {response}"
+            natural_response = self._query_local_llm(natural_prompt)
+            if natural_response and "error" not in natural_response.lower() and len(natural_response) > 10:
+                response = natural_response
         
         return response
 
@@ -933,6 +1004,7 @@ class OmnibrainSaaSEngine:
 
     def _resolve_business_data_internal(self, query: str, context: Optional[Dict] = None) -> Optional[str]:
         """Resolve specific data queries via the SQL Bridge."""
+        import re
         # 0.0 SOVEREIGN LINGUISTIC PRE-PROCESSING (Sheng, Dialect, Nuance)
         q = self.linguistic.process_advanced_request(query) if self.linguistic else query
         q = q.replace("mwenzi", "mwezi") # Common typo fix
@@ -1404,6 +1476,24 @@ class OmnibrainSaaSEngine:
             total = res[0]['total'] if res and res[0]['total'] else 0
             return f"The total sales for Shakira Ismail this month corresponds to a transaction volume of {total:,.2f} TZS. (Mauzo ya Shakira Ismail mwezi huu ni {total:,.2f} TZS)."
 
+        # Phase 4: Predictive Intents
+        if "predict" in cleaned and "sales" in cleaned:
+                return self._predict_future_sales()
+        if "run out" in cleaned or "stockout" in cleaned or "isha" in cleaned:
+                # Extract product name approx
+                p_name = cleaned.replace("when", "").replace("will", "").replace("run out", "").replace("stockout", "").replace("isha", "").replace("lini", "").strip()
+                import re
+                p_name = re.sub(r'\b(the|this|that|kwa|ya|wa)\b', '', p_name).strip()
+                if len(p_name) > 2:
+                    return self._predict_stockout_date(p_name)
+
+        # Phase 5: Universal Table Search (Dynamic DB)
+        # Check if they are asking for a table we know about but have no specific handler for.
+        # e.g. "Show me vehicles", "List audit logs"
+        dynamic_result = self._dynamic_data_retrieval(cleaned)
+        if dynamic_result:
+            return dynamic_result
+
         # 5. Specialized Contact Handlers (Debt, Ledger, Preferences, Deep Info, Habits, Payments)
         cleaned_q = q.lower()
         if any(w in cleaned_q for w in ["debt", "deni", "preference", "ledger", "favor", "penda", "buy", "info", "details", "profile", "kuhusu", "taarifa", "shop", "payment", "malipo"]):
@@ -1438,13 +1528,37 @@ class OmnibrainSaaSEngine:
                      return f"Mteja **{c['name']}** ana historia nzuri ya malipo. (Ledger extraction in progress...)"
                 return "Tafadhali taja jina la mteja kwa ajili ya ledger."
 
-        # 0.00001 FINAL FALLBACK: LOCAL LLM (Phase 2 Upgrade)
-        # If no regex/SQL match found, ask the Local AI.
+        # 0.00001 FINAL FALLBACK: LOCAL LLM + RAG (Phase 3.5 Upgrade)
+        # If no regex/SQL match found, ask the Local AI with Vector Memory.
         if HAS_LLM_CONFIG:
-            print(f"[OMNIBRAIN] No rule matched. Asking Local LLM ({DEFAULT_MODEL})...")
-            llm_response = self._query_local_llm(cleaned)
+            print(f"[OMNIBRAIN] No rule matched. Engaging RAG + Local LLM ({DEFAULT_MODEL})...")
+            
+            # 1. Retrieve Knowledge (RAG)
+            rag_context = ""
+            rag_results = self._search_vector_memory(cleaned)
+            if rag_results:
+                # Use the "output" field from our training data as the fact
+                rag_context = "\n".join([f"- {r['doc']['output']}" for r in rag_results])
+                print(f"[RAG] Found relevant context: {rag_context[:100]}...")
+            
+            # 2. Retrieve Live Context (Real-Time SQL)
+            live_context = self._get_live_context()
+            if live_context:
+                print(f"[LIVE] Injected real-time stats.")
+
+            # 3. Construct Prompt
+            final_prompt = f"User Question: {cleaned}\n"
+            if live_context:
+                final_prompt += f"\n{live_context}"
+            if rag_context:
+                final_prompt += f"\nRelevant Business Knowledge (History):\n{rag_context}\n"
+            
+            final_prompt += "\nInstructions: Answer the user using the knowledge above. If 'Live Status' answers the question, prioritize it."
+            
+            llm_response = self._query_local_llm(final_prompt)
             if llm_response:
-                return f"🤖 **AI Evaluation**:\n{llm_response}"
+                source_note = "\n\n*(📚 Verified from Database Memory & Live Pulse)*"
+                return f"🤖 **AI Evaluation**:\n{llm_response}{source_note}"
 
         # 0.00 CONVERSATIONAL ENGINE (FINAL FALLBACK - PRIORITY 9)
         # Handle Greetings & Socials (Only if query is short or explicitly a greeting)
@@ -3805,6 +3919,361 @@ class OmnibrainSaaSEngine:
             lines.append(f"- **{date_str}** | INV: {r['invoice_no']} | **{float(r['final_total']):,.0f} TZS** {status_icon}{item_str}")
             
         return header + "\n".join(lines)
+
+    def _init_vector_memory(self):
+        """Loads the Vector Memory (RAG) Index."""
+        self.vector_index = None
+        self.vector_model = None
+        self.rag_docs = []
+        
+        if not HAS_RAG_LIB:
+            logger.warning("RAG: Libraries missing.")
+            return
+
+        try:
+            # 1. Load Index (Relative to backend root)
+            # This file is deep in laravel_modules/ai_brain/, so we go up 2 levels to backend root
+            backend_root = Path(__file__).parent.parent.parent
+            index_path = backend_root / "vector_memory.pkl"
+            
+            if not index_path.exists():
+                # Fallback to CWD check just in case
+                if (Path(os.getcwd()) / "vector_memory.pkl").exists():
+                     index_path = Path(os.getcwd()) / "vector_memory.pkl"
+                else:
+                    logger.warning(f"RAG: Index not found at {index_path}")
+                    return
+                
+            with open(index_path, "rb") as f:
+                data = pickle.load(f)
+                self.vector_index = data["embeddings"]
+                self.rag_docs = data["documents"]
+            
+            # 2. Load Model (Lazy Load to save startup time if needed, but we do it here for now)
+            # Efficient: Re-use the model if already loaded in memory (singleton pattern ideally)
+            self.vector_model = SentenceTransformer('all-MiniLM-L6-v2')
+            logger.info(f"RAG: Vector Memory Loaded ({len(self.rag_docs)} items).")
+            
+        except Exception as e:
+            logger.error(f"RAG Load Error: {e}")
+
+    def _search_vector_memory(self, query: str, top_k: int = 2) -> List[Dict]:
+        """Semantic Search for Business Context."""
+        if not self.vector_index is not None or not self.vector_model:
+            return []
+            
+        try:
+            # 1. Embed Query
+            query_vec = self.vector_model.encode([query])[0]
+            
+            # 2. Cosine Similarity (Dot product for normalized vectors)
+            # We assume vectors are normalized? If not, we do simple dot product for now.
+            scores = np.dot(self.vector_index, query_vec)
+            
+            # 3. Top K
+            top_indices = np.argsort(scores)[::-1][:top_k]
+            
+            results = []
+            for idx in top_indices:
+                score = scores[idx]
+                if score > 0.4: # Relevance Threshold
+                    doc = self.rag_docs[idx]
+                    results.append({"doc": doc, "score": float(score)})
+            
+            return results
+        except Exception as e:
+            logger.error(f"RAG Search Error: {e}")
+            return []
+
+    def _get_live_context(self) -> str:
+        """Fetches real-time 'Pulse' data from the ERP (SQL)."""
+        try:
+            # 1. Today's Sales
+            # Note: We rely on the DB's timezone or assume server time matches DB
+            sql_sales = "SELECT SUM(final_total) as total, COUNT(*) as tx_count FROM transactions WHERE type='sell' AND DATE(transaction_date) = CURDATE()"
+            sales_data = self._execute_erp_query(sql_sales)
+            
+            # 2. Top Product Today
+            sql_product = """
+                SELECT p.name, SUM(tsl.quantity) as qty 
+                FROM transaction_sell_lines tsl 
+                JOIN transactions t ON tsl.transaction_id = t.id 
+                JOIN variations v ON tsl.variation_id = v.id 
+                JOIN products p ON v.product_id = p.id 
+                WHERE t.type='sell' AND DATE(t.transaction_date) = CURDATE() 
+                GROUP BY p.name 
+                ORDER BY qty DESC LIMIT 1
+            """
+            prod_data = self._execute_erp_query(sql_product)
+            
+            # Format Context
+            now_str = datetime.datetime.now().strftime('%H:%M')
+            context = f"📅 **Live Status (as of {now_str}):**\n"
+            if sales_data and sales_data[0]['total']:
+                total = float(sales_data[0]['total'])
+                count = sales_data[0]['tx_count']
+                context += f"- Today's Sales: {total:,.0f} TZS ({count} transactions).\n"
+            else:
+                context += "- Today's Sales: 0 TZS (No sales yet).\n"
+                
+            if prod_data:
+                context += f"- Trending Product: {prod_data[0]['name']} ({int(prod_data[0]['qty'])} sold today).\n"
+            
+            return context
+        except Exception as e:
+            logger.error(f"Live Context Error: {e}")
+            logger.error(f"Live Context Error: {e}")
+            return ""
+
+    # Phase 4: Predictive Analytics Wrapper
+    def _predict_future_sales(self) -> str:
+        """Forecasts sales for the next 7 days using Linear Regression."""
+        if not self.forecaster:
+            return "Predictive Engine not installed (missing scikit-learn)."
+
+        try:
+            # Get last 30 days of sales
+            sql = """
+                SELECT DATE(transaction_date) as date, SUM(final_total) as total 
+                FROM transactions 
+                WHERE type='sell' AND transaction_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                GROUP BY DATE(transaction_date)
+            """
+            data = self._execute_erp_query(sql)
+            # Format for engine
+            formatted_data = [{'date': str(d['date']), 'total': float(d['total'])} for d in data if d['total']]
+            
+            prediction = self.forecaster.predict_sales_next_7_days(formatted_data)
+            
+            if "error" in prediction:
+                return f"Could not predict sales: {prediction['error']}"
+            
+            total_7d = prediction['total_predicted_7d']
+            trend = prediction['trend']
+            
+            r = f"🔮 **Sales Forecast (Next 7 Days)**:\n"
+            r += f"- Predicted Total: **{total_7d:,.0f} TZS**\n"
+            r += f"- Trend: **{trend.title()}**\n\n"
+            r += "*Based on last 30 days of performance.*"
+            return r
+        except Exception as e:
+            logger.error(f"Prediction Error: {e}")
+            return "Prediction failed due to internal error."
+
+    def _predict_stockout_date(self, product_name: str) -> str:
+        """Predicts when a product will run out."""
+        if not self.forecaster:
+             return "Predictive Engine not installed."
+             
+        try:
+            # 1. Get Product ID & Current Stock
+            sql_prod = f"SELECT id, sku FROM products WHERE name LIKE '%{product_name}%' LIMIT 1"
+            prod = self._execute_erp_query(sql_prod)
+            if not prod:
+                return f"Product '{product_name}' not found."
+            
+            pid = prod[0]['id']
+            
+            # Get Stock (Simplified - assumes one location or sums all)
+            sql_stock = f"SELECT SUM(qty_available) as qty FROM variation_location_details vld JOIN variations v ON vld.variation_id=v.id WHERE v.product_id={pid}"
+            stock_data = self._execute_erp_query(sql_stock)
+            current_stock = float(stock_data[0]['qty']) if stock_data and stock_data[0]['qty'] else 0
+            
+            # 2. Get Sales History (Daily Qty Sold)
+            sql_hist = f"""
+                SELECT DATE(t.transaction_date) as date, SUM(tsl.quantity) as qty
+                FROM transaction_sell_lines tsl
+                JOIN transactions t ON tsl.transaction_id = t.id
+                JOIN variations v ON tsl.variation_id = v.id
+                WHERE v.product_id={pid} AND t.type='sell' AND t.transaction_date >= DATE_SUB(CURDATE(), INTERVAL 60 DAY)
+                GROUP BY DATE(t.transaction_date)
+            """
+            hist_data = self._execute_erp_query(sql_hist)
+            sales_history = [float(d['qty']) for d in hist_data]
+            
+            # 3. Predict
+            result = self.forecaster.predict_stockout_date(current_stock, sales_history)
+            
+            r = f"📉 **Stockout Prediction for '{product_name}'**:\n"
+            r += f"- Current Stock: {int(current_stock)}\n"
+            if result['days_left'] > 365:
+                 r += "- Prediction: **Safe** (Enough for >1 year)\n"
+            else:
+                 r += f"- Estimated Run-out: **{result['date']}** ({result['days_left']} days left)\n"
+                 r += f"- Burn Rate: ~{result['burn_rate']:.1f} units/day"
+            
+            return r
+        except Exception as e:
+            logger.error(f"Stockout Predict Error: {e}")
+            r += f"- Burn Rate: ~{result['burn_rate']:.1f} units/day"
+            
+            return r
+        except Exception as e:
+            logger.error(f"Stockout Predict Error: {e}")
+            return "Could not predict stockout."
+
+    # Phase 5: Deep Laravel Integration (Full DB Awareness)
+    def _map_database_schema(self):
+        """Reads the entire DB schema on startup to know which tables exist."""
+        try:
+            # Get all base tables (excluding views for now if preferred, or include them)
+            sql = "SELECT table_name FROM information_schema.tables WHERE table_schema = %s AND table_type = 'BASE TABLE'"
+            tables = self._execute_erp_query(sql, (self.db_config['database'],))
+            
+            ignored_tables = ['migrations', 'password_resets', 'failed_jobs', 'personal_access_tokens', 'sessions']
+            
+            count = 0
+            for t in tables:
+                t_name = t['table_name']
+                if t_name in ignored_tables:
+                    continue
+                
+                # Get columns for this table
+                sql_cols = "SELECT column_name FROM information_schema.columns WHERE table_schema = %s AND table_name = %s"
+                cols = self._execute_erp_query(sql_cols, (self.db_config['database'], t_name))
+                self.schema_map[t_name] = [c['column_name'] for c in cols]
+                count += 1
+                
+            logger.info(f"Phase 5: Mapped {count} tables from '{self.db_config['database']}'.")
+        except Exception as e:
+            logger.error(f"Schema Mapping Failed: {e}")
+
+    def _dynamic_data_retrieval(self, query: str) -> Optional[str]:
+        """Universal Table Search: If query mentions a table, fetch data dynamically."""
+        query_words = query.lower().split()
+        
+        # Check against mapped tables
+        found_table = None
+        for word in query_words:
+            # Simple heuristic: exact match or plural match
+            if word in self.schema_map:
+                found_table = word
+                break
+            # Try removing 's' (very basic stemming)
+            if word.endswith('s') and word[:-1] in self.schema_map:
+                found_table = word[:-1]
+                break
+                
+        if not found_table:
+            return None
+
+        try:
+            # Dynamic SQL Construction
+            columns = self.schema_map[found_table]
+            has_soft_delete = 'deleted_at' in columns
+            
+            sql = f"SELECT * FROM {found_table}"
+            if has_soft_delete:
+                sql += " WHERE deleted_at IS NULL"
+            
+            sql += " LIMIT 5"
+            
+            results = self._execute_erp_query(sql)
+            
+            if not results:
+                return f"I found the table '{found_table}', but it appears to be empty."
+                
+            # Format generic result
+            r = f"📁 **Universal Access: '{found_table}'**:\n"
+            r += f"*(Found {len(results)} records, respecting Laravel rules)*\n\n"
+            
+            for row in results:
+                # smart format: show only first 3-4 interesting columns to avoid noise
+                # interesting = not id, not created_at, not updated_at
+                interesting_cols = [k for k in row.keys() if k not in ['created_at', 'updated_at', 'deleted_at', 'email_verified_at', 'remember_token']]
+                summary_row = ", ".join([f"**{k}**: {row[k]}" for k in interesting_cols[:4]])
+                r += f"- {summary_row}\n"
+                
+            return r
+            
+        except Exception as e:
+            r += f"- {summary_row}\n"
+                
+            return r
+            
+        except Exception as e:
+            logger.error(f"Dynamic Retrieval Error ({found_table}): {e}")
+            return None 
+
+    # Phase 6: Autonomous Agents (Proactive Logic)
+    def _run_morning_briefing(self):
+        """Called by Surveyor Agent at 08:00 AM."""
+        try:
+            logger.info("Running Morning Briefing...")
+            # 1. Check Low Stock
+            sql = "SELECT name, qty, alert_quantity FROM products WHERE qty <= alert_quantity AND deleted_at IS NULL LIMIT 5"
+            low_stock = self._execute_erp_query(sql)
+            
+            # 2. Check System Health (e.g. Failed Jobs)
+            failed_jobs = []
+            if "failed_jobs" in self.schema_map:
+                 sql_jobs = "SELECT COUNT(*) as c FROM failed_jobs"
+                 res = self._execute_erp_query(sql_jobs)
+                 if res and res[0]['c'] > 0:
+                     failed_jobs = res[0]['c']
+
+            # Generate Report
+            report = "☀️ **Morning Surveyor Report**\n"
+            report += f"**Time**: {time.strftime('%H:%M')}\n\n"
+            
+            if low_stock:
+                report += "⚠️ **Low Stock Alert**:\n"
+                for p in low_stock:
+                    report += f"- {p['name']}: {p['qty']} (Alert: {p['alert_quantity']})\n"
+            else:
+                report += "✅ Stock Levels: Healthy.\n"
+
+            if failed_jobs:
+                 report += f"\n🚨 **System Alert**: {failed_jobs} Failed Background Jobs found.\n"
+            else:
+                 report += "\n✅ System Health: All Green.\n"
+
+            return report
+        except Exception as e:
+            logger.error(f"Morning Briefing Failed: {e}")
+            return "❌ Morning Surveyor crashed."
+
+    def _run_nightly_debrief(self):
+        """Called by Analyst Agent at 08:00 PM."""
+        try:
+            logger.info("Running Nightly Debrief...")
+            # 1. Today's Sales
+            sql = "SELECT SUM(final_total) as total, COUNT(*) as tx_count FROM transactions WHERE transaction_date >= CURDATE()"
+            sales = self._execute_erp_query(sql)
+            total = sales[0]['total'] if sales and sales[0]['total'] else 0
+            count = sales[0]['tx_count'] if sales else 0
+            
+            # 2. Top Item
+            sql_top = """
+                SELECT p.name, SUM(tlj.quantity) as qty 
+                FROM transaction_sell_lines tlj 
+                JOIN transactions t ON tlj.transaction_id = t.id
+                JOIN products p ON tlj.product_id = p.id
+                WHERE t.transaction_date >= CURDATE()
+                GROUP BY p.id ORDER BY qty DESC LIMIT 1
+            """
+            top_item = self._execute_erp_query(sql_top)
+            
+            # Generate Report
+            report = "🌙 **Nightly Analyst Report**\n"
+            report += f"**Summary for {time.strftime('%Y-%m-%d')}**\n\n"
+            
+            report += f"💰 **Total Sales**: {total:,.2f} TZS\n"
+            report += f"🧾 **Transactions**: {count}\n"
+            
+            if top_item:
+                report += f"🏆 **Best Seller**: {top_item[0]['name']} ({int(top_item[0]['qty'])} units)\n"
+            else:
+                report += "📉 No sales recorded today.\n"
+
+            # 3. Anomaly Check (Simple)
+            if total > 0 and count < 3:
+                report += "\n⚠️ **Anomaly**: High value but low transaction count. Whales?\n"
+
+            return report
+        except Exception as e:
+            logger.error(f"Nightly Debrief Failed: {e}")
+            return "❌ Nightly Analyst crashed."
 
     def _query_local_llm(self, prompt: str) -> Optional[str]:
         """

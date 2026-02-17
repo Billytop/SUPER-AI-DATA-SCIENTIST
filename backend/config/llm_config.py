@@ -10,7 +10,7 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 # Model to use (Must be pulled in Ollama first, e.g., 'ollama pull llama3')
 # Good options: 'llama3', 'mistral', 'gemma:7b'
-DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
+DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
 
 # Timeout in seconds
 LLM_TIMEOUT = 30
